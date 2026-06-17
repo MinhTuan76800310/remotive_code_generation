@@ -1,0 +1,48 @@
+name: Verify Generated Behavioral Models
+
+on:
+  push:
+    paths:
+      - 'examples/*.yaml'
+      - 'bmgen/**'
+      - 'tests/**'
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install bmgen
+        run: pip install -e ".[dev]"
+
+      - name: Parse all example YAML specs
+        run: |
+          for yaml in examples/*.yaml; do
+            echo "Parsing $yaml..."
+            bmgen parse "$yaml" || exit 1
+          done
+
+      - name: Generate all example models
+        run: |
+          mkdir -p _generated
+          for yaml in examples/*.yaml; do
+            echo "Generating from $yaml..."
+            bmgen generate "$yaml" --out _generated/ || exit 1
+          done
+
+      - name: Verify all generated models
+        run: |
+          for yaml in examples/*.yaml; do
+            echo "Verifying from $yaml..."
+            bmgen verify _generated/ --spec "$yaml" || exit 1
+          done
+
+      - name: Run test suite
+        run: pytest tests/ -v

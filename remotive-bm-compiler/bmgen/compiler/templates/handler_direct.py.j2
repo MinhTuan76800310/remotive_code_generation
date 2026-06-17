@@ -1,0 +1,7 @@
+async def {{ handler_name }}(self, frame: Frame) -> None:
+    {{ input_signal_var }} = frame.signals["{{ input_signal_ref }}"]
+    await self.{{ output_namespace_var }}.restbus.update_signals(
+{% for signal_name, value_expr in output_tuples %}
+        ("{{ signal_name }}", {{ value_expr }}),
+{% endfor %}
+    )

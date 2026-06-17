@@ -1,0 +1,9 @@
+async def on_reboot(self, request: ControlRequest) -> ControlResponse:
+    """Reset all owned state variables and output namespace restbus."""
+{% for state in reset_states %}
+    self.{{ state.private_var }} = {{ state.reset_value }}
+{% endfor %}
+{% for ns_var in reset_namespace_vars %}
+    await self.{{ ns_var }}.restbus.reset()
+{% endfor %}
+    return ControlResponse(status="ok")

@@ -1,0 +1,34 @@
+model:
+  name: BCM
+  ecu_name: BCM
+
+namespaces:
+  - name: BCM-BodyCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: BCM
+  - name: BCM-DriverCan0
+    type: can
+    role: input
+
+handlers:
+  - name: on_hazard_button
+    pattern: ToggleButtonState
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: HazardLightButton
+      signal: HazardLightButton.HazardLightButton
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.RightTurnLightRequest
+        - TurnLightControl.LeftTurnLightRequest
+    state:
+      name: hazard_enabled
+      type: bool
+      initial: false
+      reset_value: false
+      owner: on_hazard_button
+
+reset_handler: true

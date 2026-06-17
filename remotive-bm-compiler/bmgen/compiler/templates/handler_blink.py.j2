@@ -1,0 +1,32 @@
+async def {{ handler_name }}(self, frame: Frame) -> None:
+    {{ input_signal_var }} = frame.signals["{{ input_signal_ref }}"]
+    if {{ input_signal_var }} and not self.{{ state_private_var }}:
+        self.{{ state_private_var }} = True
+        self._start_blinking_{{ state_name }}()
+    elif not {{ input_signal_var }} and self.{{ state_private_var }}:
+        self.{{ state_private_var }} = False
+        self._stop_blinking_{{ state_name }}()
+        await self.{{ output_namespace_var }}.restbus.update_signals(
+{% for signal_name, value_expr in output_tuples %}
+            ("{{ signal_name }}", 0),
+{% endfor %}
+        )
+
+def _start_blinking_{{ state_name }}(self) -> None:
+    self.{{ ticker_var_name }} = asyncio.create_task(self._blink_loop_{{ state_name }}())
+
+def _stop_blinking_{{ state_name }}(self) -> None:
+    if self.{{ ticker_var_name }}:
+        self.{{ ticker_var_name }}.cancel()
+    self.{{ ticker_var_name }} = None
+
+async def _blink_loop_{{ state_name }}(self) -> None:
+    blink_state = True
+    while True:
+        await asyncio.sleep({{ ticker_interval }})
+        blink_state = not blink_state
+        await self.{{ output_namespace_var }}.restbus.update_signals(
+{% for signal_name in blink_output_signals %}
+            ("{{ signal_name }}", 1 if blink_state else 0),
+{% endfor %}
+        )

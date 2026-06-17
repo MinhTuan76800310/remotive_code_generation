@@ -1,0 +1,90 @@
+import asyncio
+import logging
+from dataclasses import dataclass
+
+from remotivelabs.broker import BrokerClient, Frame
+from remotivelabs.topology.behavioral_model import BehavioralModel
+{% if has_reset_handler %}from remotivelabs.topology.behavioral_model import RebootRequest
+{% endif %}from remotivelabs.topology.cli.behavioral_model import BehavioralModelArgs
+{% if has_reset_handler %}from remotivelabs.topology.control import ControlRequest, ControlResponse
+{% endif %}from remotivelabs.topology.namespaces import filters
+from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
+
+
+{% if has_state %}
+class {{ model_name }}:
+{% else %}
+@dataclass
+class {{ model_name }}:
+{% endif %}
+{% for ns in output_namespaces %}
+    {{ ns.python_var_name }}: CanNamespace
+{% endfor %}
+{% for state in states %}
+    {{ state.private_var }}: {{ state.type }} = {{ state.initial }}
+{% endfor %}
+{% for prev_state in previous_states %}
+    {{ prev_state.var_name }}: int = 0
+{% endfor %}
+{% for ticker in tickers %}
+    {{ ticker.var_name }}: asyncio.Task | None = None
+{% endfor %}
+
+{% for hb in handler_bodies %}
+{{ hb.body }}
+
+{% endfor %}
+{% if has_reset_handler and reset_handler_body %}
+{{ reset_handler_body }}
+
+{% endif %}
+
+
+async def main(avp: BehavioralModelArgs):
+    logging.info("Starting {{ model_name }} simulator")
+
+    async with BrokerClient(url=avp.url, auth=avp.auth) as broker_client:
+{% for ns in output_namespaces %}
+        {{ ns.python_var_name }} = CanNamespace(
+            "{{ ns.name }}",
+            broker_client,
+            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="{{ ecu_name }}")], delay_multiplier=avp.delay_multiplier)],
+        )
+
+{% endfor %}
+{% for ns in input_only_namespaces %}
+        {{ ns.python_var_name }} = CanNamespace("{{ ns.name }}", broker_client)
+
+{% endfor %}
+        {{ model_name_lower }} = {{ model_name }}(
+{% for ns in output_namespaces %}
+            {{ ns.python_var_name }}={{ ns.python_var_name }},
+{% endfor %}
+        )
+
+        async with BehavioralModel(
+            "{{ ecu_name }}",
+            namespaces=[{{ all_namespace_vars }}],
+            broker_client=broker_client,
+            input_handlers=[
+{% for handler in handlers %}
+                {{ handler_input_namespace_vars[handler.name] }}.create_input_handler(
+                    [filters.FrameFilter("{{ handler.input_frame_filter }}")],
+                    {{ model_name_lower }}.{{ handler.name }},
+                ),
+{% endfor %}
+            ],
+{% if has_reset_handler %}
+            control_handlers=[
+                (RebootRequest.type, {{ model_name_lower }}.on_reboot),
+            ],
+{% endif %}
+        ) as bm:
+            await bm.run_forever()
+
+
+if __name__ == "__main__":
+    args = BehavioralModelArgs.parse()
+    logging.basicConfig(level=args.loglevel)
+    logging.getLogger("remotivelabs.topology").setLevel(logging.DEBUG)
+    asyncio.run(main(args))

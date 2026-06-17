@@ -1,0 +1,54 @@
+model:
+  name: BCM
+  ecu_name: BCM
+
+namespaces:
+  - name: BCM-BodyCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: BCM
+  - name: BCM-DriverCan0
+    type: can
+    role: input
+
+handlers:
+  - name: on_hazard_light
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: HazardLightButton
+      signal: HazardLightButton.HazardLightButton
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.RightTurnLightRequest
+        - TurnLightControl.LeftTurnLightRequest
+
+  - name: on_turn_stalk
+    pattern: PeriodicBlinkingOutput
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: TurnStalk
+      signal: TurnStalk.TurnSignal
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.LeftTurnLightRequest
+        - TurnLightControl.RightTurnLightRequest
+    state:
+      name: blink_enabled
+      type: bool
+      initial: false
+      reset_value: false
+      owner: on_turn_stalk
+    periodic_task:
+      interval_sec: 1.0
+      blink_output:
+        namespace: BCM-BodyCan0
+        signals:
+          - TurnLightControl.LeftTurnLightRequest
+          - TurnLightControl.RightTurnLightRequest
+      cleanup: true
+
+reset_handler: true
