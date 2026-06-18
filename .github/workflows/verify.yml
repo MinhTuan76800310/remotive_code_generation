@@ -3,14 +3,19 @@ name: Verify Generated Behavioral Models
 on:
   push:
     paths:
-      - 'examples/*.yaml'
-      - 'bmgen/**'
-      - 'tests/**'
+      - 'remotive-bm-compiler/examples/*.yaml'
+      - 'remotive-bm-compiler/bmgen/**'
+      - 'remotive-bm-compiler/tests/**'
+      - 'remotive-bm-compiler/pyproject.toml'
+      - '.github/workflows/verify.yml'
   pull_request:
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: remotive-bm-compiler
     steps:
       - uses: actions/checkout@v4
 
