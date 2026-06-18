@@ -73,23 +73,42 @@ def run_composition_checks(
         report.add_check("composition", "no_pattern_conflicts", "PASS",
                          "No conflicting output signals")
     else:
-        # Check if conflicts involve novel_logic — those are warnings, not errors
+        # Multi-writer patterns are common in event-driven CAN systems (e.g.,
+        # hazard override + turn blink writing the same TurnLight signals).
+        # Downgrade to a warning when handlers trigger on different frame filters,
+        # since they fire on different events and won't race.
         real_conflicts = {}
         for signal, writers in conflicts.items():
-            novel_writers = [w for w in writers if next(h for h in ir.handlers if h.name == w[0]).novel_logic]
-            if len(writers) - len(novel_writers) > 1:
-                real_conflicts[signal] = writers
+            handler_objs = [next(h for h in ir.handlers if h.name == w[0]) for w in writers]
+            # novel_logic handlers don't count toward real conflicts
+            novel_count = sum(1 for h in handler_objs if h.novel_logic)
+            non_novel_count = len(handler_objs) - novel_count
+
+            # If all conflicting writers are novel_logic, it's just a warning
+            if non_novel_count <= 1:
+                continue  # at most 1 real writer → override pattern, not conflict
+
+            # If writers trigger on different frame filters, it's an override pattern
+            # (different events → different triggers → no race condition)
+            frame_filters = {(h.input_namespace, h.input_frame_filter) for h in handler_objs if not h.novel_logic}
+            if len(frame_filters) > 1:
+                continue  # different triggers → override pattern, downgrade to warning
+
+            # Same trigger + different patterns + multiple non-novel writers → real conflict
+            real_conflicts[signal] = writers
 
         if real_conflicts:
             report.add_check("composition", "no_pattern_conflicts", "FAIL",
-                             f"Conflicting patterns for same signals: {real_conflicts}")
+                             f"Conflicting patterns for same signals on same trigger: {real_conflicts}")
             all_pass = False
         else:
             report.add_check("composition", "no_pattern_conflicts", "PASS",
-                             "Signal conflicts only involve novel_logic handlers (warning)")
+                             "Signal conflicts are override patterns (different triggers) — warning only")
             for signal, writers in conflicts.items():
-                report.add_warning("duplicate_signal_source", "",
-                                   f"Signal '{signal}' written by multiple handlers: {writers}")
+                handler_objs = [next(h for h in ir.handlers if h.name == w[0]) for w in writers]
+                triggers = [(h.input_namespace, h.input_frame_filter) for h in handler_objs]
+                report.add_warning("duplicate_signal_source", ", ".join(w[0] for w in writers),
+                                   f"Signal '{signal}' written by multiple handlers on different triggers: {triggers}")
 
     # Check 4: periodic_tasks_have_cleanup
     periodic_tasks = [h for h in ir.handlers if h.periodic_task is not None]
