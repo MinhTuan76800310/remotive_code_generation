@@ -34,19 +34,15 @@ jobs:
             bmgen parse "$yaml" || exit 1
           done
 
-      - name: Generate all example models
-        run: |
-          mkdir -p _generated
-          for yaml in examples/*.yaml; do
-            echo "Generating from $yaml..."
-            bmgen generate "$yaml" --out _generated/ || exit 1
-          done
-
-      - name: Verify all generated models
+      - name: Generate and verify each example model
         run: |
           for yaml in examples/*.yaml; do
-            echo "Verifying from $yaml..."
-            bmgen verify _generated/ --spec "$yaml" || exit 1
+            slug=$(basename "$yaml" .yaml)
+            outdir="_generated/${slug}"
+            echo "=== $yaml → $outdir ==="
+            mkdir -p "$outdir"
+            bmgen generate "$yaml" --out "$outdir" || exit 1
+            bmgen verify "$outdir" --spec "$yaml" || exit 1
           done
 
       - name: Run test suite
