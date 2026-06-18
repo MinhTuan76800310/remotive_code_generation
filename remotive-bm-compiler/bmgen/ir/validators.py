@@ -198,9 +198,20 @@ def _check_unknown_pattern_fails_early(ir: "BehavioralModelIR") -> list[Validati
     Patterns must be in the recipe registry. If a pattern is not recognized,
     the handler must be explicitly marked as novel_logic=True, which generates
     a stub handler instead.
+
+    The known-pattern set is derived from the recipe registry itself, so
+    registering a new recipe is sufficient — no edit to this validator is
+    required. This keeps the registry the single source of truth.
     """
-    # Known patterns in MVP recipe registry
-    known_patterns = {"DirectSignalMapping", "ToggleButtonState", "PeriodicBlinkingOutput"}
+    # Import here to avoid a circular import (registry → recipes → ir.model).
+    from bmgen.recipes.registry import create_default_registry
+
+    registry = create_default_registry()
+    known_patterns = registry.known_patterns()
+    # DEBUG: print known patterns to stderr so CI logs capture them
+    import sys
+    sys.stderr.write(f"[DEBUG validator] known_patterns = {sorted(known_patterns)}\n")
+    sys.stderr.flush()
     violations = []
     for handler in ir.handlers:
         if handler.pattern not in known_patterns and not handler.novel_logic:
