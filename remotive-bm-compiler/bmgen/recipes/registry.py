@@ -15,6 +15,7 @@ from bmgen.recipes.base import Recipe
 from bmgen.recipes.direct_signal_mapping import DirectSignalMappingRecipe
 from bmgen.recipes.toggle_button_state import ToggleButtonStateRecipe
 from bmgen.recipes.periodic_blinking_output import PeriodicBlinkingOutputRecipe
+from bmgen.recipes.logic_gate import LogicGateRecipe
 
 
 class RecipeRegistry:
@@ -49,4 +50,9 @@ def create_default_registry() -> RecipeRegistry:
     registry.register(DirectSignalMappingRecipe())
     registry.register(ToggleButtonStateRecipe())
     registry.register(PeriodicBlinkingOutputRecipe())
+    # Stateless boolean logic gates — one recipe class, four operators.
+    registry.register(LogicGateRecipe("and"))
+    registry.register(LogicGateRecipe("or"))
+    registry.register(LogicGateRecipe("xor"))
+    registry.register(LogicGateRecipe("not"))
     return registry

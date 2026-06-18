@@ -72,6 +72,21 @@ class Recipe(ABC):
         """
         ...
 
+    def output_value_expr(self, handler_ir: "HandlerIR") -> str:
+        """Return the Python expression written to every output signal.
+
+        This is the behavioral core of the recipe: given a handler, what value
+        does it forward to its outputs? Keeping it here (rather than in the IR
+        builder) means a new recipe defines its own semantics in one place.
+
+        Default: forward the (single) input signal value verbatim, matching the
+        simplest direct-forwarding pattern. Recipes with state or computed
+        output override this.
+        """
+        if handler_ir.input_signals:
+            return handler_ir.input_signals[0].python_var_name
+        return "value"
+
     def required_fields(self) -> dict:
         """Return a dict describing the required IR fields for this recipe.
 

@@ -1,0 +1,68 @@
+model:
+  name: LogicGateDemo
+  ecu_name: LGCM
+
+namespaces:
+  - name: LGCM-InputCan0
+    type: can
+    role: input
+  - name: LGCM-OutputCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: LGCM
+
+handlers:
+  # AND gate: all inputs must be true
+  - name: on_logic_and
+    pattern: LogicAnd
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signals:
+        - LogicInputs.A
+        - LogicInputs.B
+    output:
+      namespace: LGCM-OutputCan0
+      signals:
+        - LogicOutputs.AND_Result
+
+  # OR gate: any input must be true
+  - name: on_logic_or
+    pattern: LogicOr
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signals:
+        - LogicInputs.A
+        - LogicInputs.B
+    output:
+      namespace: LGCM-OutputCan0
+      signals:
+        - LogicOutputs.OR_Result
+
+  # XOR gate: odd number of inputs must be true
+  - name: on_logic_xor
+    pattern: LogicXor
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signals:
+        - LogicInputs.A
+        - LogicInputs.B
+    output:
+      namespace: LGCM-OutputCan0
+      signals:
+        - LogicOutputs.XOR_Result
+
+  # NOT gate: invert the single input
+  - name: on_logic_not
+    pattern: LogicNot
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signal: LogicInputs.A
+    output:
+      namespace: LGCM-OutputCan0
+      signals:
+        - LogicOutputs.NOT_Result
