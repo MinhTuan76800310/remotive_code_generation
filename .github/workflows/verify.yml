@@ -27,20 +27,6 @@ jobs:
       - name: Install bmgen
         run: pip install -e ".[dev]"
 
-      - name: Debug — check registry and logic_gate module
-        run: |
-          python3 -c "
-          from bmgen.recipes.registry import create_default_registry
-          reg = create_default_registry()
-          print('Known patterns:', sorted(reg.known_patterns()))
-          "
-          python3 -c "
-          from bmgen.recipes.logic_gate import LogicGateRecipe
-          print('LogicGateRecipe imported OK')
-          r = LogicGateRecipe('and')
-          print('LogicAnd recipe name:', r.name)
-          "
-
       - name: Parse all example YAML specs
         run: |
           for yaml in examples/*.yaml; do

@@ -206,20 +206,10 @@ def _check_unknown_pattern_fails_early(ir: "BehavioralModelIR") -> list[Validati
     # Import here to avoid a circular import (registry → recipes → ir.model).
     from bmgen.recipes.registry import create_default_registry
 
-    registry = create_default_registry()
-    known_patterns = registry.known_patterns()
-    # DEBUG: print known patterns to stderr so CI logs capture them
-    import sys
-    sys.stderr.write(f"[DEBUG validator] known_patterns = {sorted(known_patterns)}\n")
-    sys.stderr.flush()
+    known_patterns = create_default_registry().known_patterns()
     violations = []
     for handler in ir.handlers:
-        match = handler.pattern in known_patterns
-        # DEBUG: log each handler's pattern check
-        import sys
-        sys.stderr.write(f"[DEBUG validator] handler='{handler.name}' pattern='{handler.pattern}' (type={type(handler.pattern).__name__}) in known={match} novel={handler.novel_logic}\n")
-        sys.stderr.flush()
-        if not match and not handler.novel_logic:
+        if handler.pattern not in known_patterns and not handler.novel_logic:
             violations.append(
                 ValidationViolation(
                     rule="unknown_pattern_fails_early",

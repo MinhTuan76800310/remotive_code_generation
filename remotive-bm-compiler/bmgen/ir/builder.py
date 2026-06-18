@@ -135,16 +135,22 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
 
         novel_logic = h_spec.get("novel_logic", False)
 
-        # Input
+        # Input — accept either `signal` (scalar) or `signals` (list).
+        # The IR field input_signals is already a list; multi-input patterns
+        # (e.g. logic gates) read several signals from the one triggering frame.
         input_spec = h_spec.get("input", {})
         input_namespace = input_spec.get("namespace", "")
         input_frame_filter = input_spec.get("frame_filter", "")
 
-        # Build input signals
-        input_signal_name = input_spec.get("signal", "")
-        input_signals = []
-        if input_signal_name:
-            input_signals.append(InputSignalIR(name=input_signal_name))
+        # Build input signals (scalar `signal` and list `signals` both allowed)
+        input_signal_names = []
+        scalar_signal = input_spec.get("signal")
+        if scalar_signal:
+            input_signal_names.append(scalar_signal)
+        input_signal_names.extend(input_spec.get("signals", []))
+
+        input_signals = [InputSignalIR(name=s) for s in input_signal_names]
+        _ensure_unique_var_names(input_signals)
 
         # Output
         output_spec = h_spec.get("output", {})
@@ -193,6 +199,47 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
     return handlers
 
 
+def _ensure_unique_var_names(input_signals: list[InputSignalIR]) -> None:
+    """Disambiguate Python variable names across a handler's input signals.
+
+    `_derive_signal_var_name` keys off the frame name only, so two signals in
+    the same frame (e.g. "Logic.A" and "Logic.B") both derive to "logic_signal".
+    For multi-input patterns this would shadow one variable with the next. Here
+    we detect collisions and append a snake_case form of the signal's own name
+    (the part after the dot) to make each variable unique and readable.
+    """
+    seen: dict[str, int] = {}
+    for sig in input_signals:
+        base = sig.python_var_name
+        seen[base] = seen.get(base, 0) + 1
+
+    counts: dict[str, int] = {}
+    for sig in input_signals:
+        base = sig.python_var_name
+        if seen[base] == 1:
+            continue  # unique already
+        # Collision: append the signal-name part (after '.') for readability.
+        parts = sig.name.split(".", 1)
+        suffix = parts[1] if len(parts) == 2 else parts[0]
+        suffix_snake = _camel_to_snake(suffix)
+        candidate = f"{base.removesuffix('_signal')}_{suffix_snake}_signal"
+        # Guard against a still-duplicate candidate with a numeric counter.
+        counts[candidate] = counts.get(candidate, 0) + 1
+        if counts[candidate] > 1:
+            candidate = f"{candidate}_{counts[candidate]}"
+        sig.python_var_name = candidate
+
+
+def _camel_to_snake(name: str) -> str:
+    """Convert a CamelCase signal-name fragment to snake_case."""
+    result = []
+    for i, char in enumerate(name):
+        if char.isupper() and i > 0:
+            result.append("_")
+        result.append(char.lower())
+    return "".join(result)
+
+
 def _build_reset_handler(spec: dict, handlers: list[HandlerIR]) -> ResetHandlerIR | None:
     """Build a ResetHandlerIR if the spec requests it or if any handler needs reset.
 
@@ -225,30 +272,27 @@ def _build_reset_handler(spec: dict, handlers: list[HandlerIR]) -> ResetHandlerI
 def _apply_value_exprs(ir: BehavioralModelIR) -> None:
     """Apply recipe-derived value expressions to output signals.
 
-    This step fills in the `value_expr` field on OutputSignalIR based on the
-    handler's pattern. It runs after IR construction because it depends on
-    knowing the pattern and input signal variable names.
+    This step fills in the `value_expr` field on OutputSignalIR. The expression
+    is owned by each recipe via Recipe.output_value_expr(), so adding a new
+    pattern requires no edit here — the registry is the single source of truth.
+
+    novel_logic handlers are skipped (they generate stubs with no logic).
+    Unknown patterns are left with empty value_exprs; validators reject them
+    earlier unless novel_logic=True, so this is only reached for known recipes.
     """
+    from bmgen.recipes.registry import create_default_registry
+
+    registry = create_default_registry()
+
     for handler in ir.handlers:
         if handler.novel_logic:
             # novel_logic handlers have no value expressions (stub only)
             continue
 
-        if handler.pattern == "DirectSignalMapping":
-            # DirectSignalMapping: output value = input signal value
-            input_var = handler.input_signals[0].python_var_name if handler.input_signals else "value"
-            for output_signal in handler.output_signals:
-                output_signal.value_expr = input_var
+        recipe = registry.get(handler.pattern)
+        if recipe is None:
+            continue
 
-        elif handler.pattern == "ToggleButtonState":
-            # ToggleButtonState: output value = 1 if state_enabled else 0
-            state_name = handler.state.name if handler.state else "enabled"
-            for output_signal in handler.output_signals:
-                output_signal.value_expr = f"1 if self._{state_name} else 0"
-
-        elif handler.pattern == "PeriodicBlinkingOutput":
-            # PeriodicBlinkingOutput: blink toggle handled by periodic task
-            # The handler sets state, the periodic task toggles output
-            state_name = handler.state.name if handler.state else "blink_enabled"
-            for output_signal in handler.output_signals:
-                output_signal.value_expr = f"1 if self._{state_name} else 0"
+        value_expr = recipe.output_value_expr(handler)
+        for output_signal in handler.output_signals:
+            output_signal.value_expr = value_expr

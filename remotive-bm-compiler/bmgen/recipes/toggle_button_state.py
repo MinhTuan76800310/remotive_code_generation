@@ -121,6 +121,11 @@ class ToggleButtonStateRecipe(Recipe):
             },
         )
 
+    def output_value_expr(self, handler_ir: HandlerIR) -> str:
+        """Output reflects the toggled boolean state as 0/1."""
+        state_name = handler_ir.state.name if handler_ir.state else "enabled"
+        return f"1 if self._{state_name} else 0"
+
     def required_fields(self) -> dict:
         return {
             "name": self.name,
