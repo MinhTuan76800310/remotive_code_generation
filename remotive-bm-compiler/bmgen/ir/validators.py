@@ -214,7 +214,12 @@ def _check_unknown_pattern_fails_early(ir: "BehavioralModelIR") -> list[Validati
     sys.stderr.flush()
     violations = []
     for handler in ir.handlers:
-        if handler.pattern not in known_patterns and not handler.novel_logic:
+        match = handler.pattern in known_patterns
+        # DEBUG: log each handler's pattern check
+        import sys
+        sys.stderr.write(f"[DEBUG validator] handler='{handler.name}' pattern='{handler.pattern}' (type={type(handler.pattern).__name__}) in known={match} novel={handler.novel_logic}\n")
+        sys.stderr.flush()
+        if not match and not handler.novel_logic:
             violations.append(
                 ValidationViolation(
                     rule="unknown_pattern_fails_early",
