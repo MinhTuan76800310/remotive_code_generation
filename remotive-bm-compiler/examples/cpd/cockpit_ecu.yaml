@@ -1,0 +1,80 @@
+# COCKPIT-ECU — HMI gateway for driver confirmation interaction
+# Function:
+#   1. CPD Child Alert: Receive child detection status + confirmation request from Central Computer,
+#      forward to driver HMI via CAN (simulation: all buses are CAN, no Ethernet)
+#   2. Confirmation Response Communication: Receive driver confirmation input from HMI via CAN,
+#      return driver confirmation to Central Computer via BUS-COCKPIT-CANFD
+# BPMN: Event_0zye75p (ChildDetectedCatch) → Activity_04pmwk3 (CPD Child Alert) → Event_1le5e2a (DisplayAlertThrow).
+#        Activity_1b724kh → Activity_0fppzl5 (Confirmation Response) → Event_0xt4e4f (DriverDecisionThrow → Central Computer)
+# Spec: CHILD-SCD-001 §COCKPIT-ECU
+# Design: Simulation ECU — CAN only, no Automotive Ethernet
+
+model:
+  name: CockpitECU
+  ecu_name: COCKPIT
+
+namespaces:
+  # Input: child detection status + confirmation request from Central Computer on BUS-COCKPIT-CANFD
+  - name: COCKPIT-CockpitCanInput0
+    type: can
+    role: input
+
+  # Output: child detection alert + confirmation request to driver HMI on CAN
+  - name: COCKPIT-HmiCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: COCKPIT
+
+  # Input: driver confirmation from HMI via CAN
+  - name: COCKPIT-HmiCanInput0
+    type: can
+    role: input
+
+  # Output: driver confirmation response to Central Computer on BUS-COCKPIT-CANFD
+  - name: COCKPIT-CockpitCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: COCKPIT
+
+handlers:
+  # ── CPD Child Alert: forward to driver HMI ──
+
+  # Child presence status from Central Computer → forward to HMI
+  - name: on_child_alert
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-CockpitCanInput0
+      frame_filter: CPDChildDetection
+      signal: CPDChildDetection.ChildPresenceStatus
+    output:
+      namespace: COCKPIT-HmiCan0
+      signals:
+        - HmiCpdDisplay.ChildPresenceStatus
+
+  # Confirmation request from Central Computer → forward to HMI
+  - name: on_confirmation_request
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-CockpitCanInput0
+      frame_filter: CPDChildDetection
+      signal: CPDChildDetection.ConfirmationRequest
+    output:
+      namespace: COCKPIT-HmiCan0
+      signals:
+        - HmiCpdDisplay.ConfirmationRequest
+
+  # ── Confirmation Response: driver confirmation back to Central Computer ──
+
+  # Driver confirmation from HMI → return to Central Computer
+  - name: on_driver_confirmation
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-HmiCanInput0
+      frame_filter: HmiDriverInput
+      signal: HmiDriverInput.DriverConfirmedDeactivation
+    output:
+      namespace: COCKPIT-CockpitCan0
+      signals:
+        - DriverConfirmation.DriverConfirmedDeactivation

@@ -113,6 +113,11 @@ class HandlerIR:
     Each handler corresponds to one input frame filter → one async method that
     processes the frame and produces output signals. The pattern field maps to
     a recipe that determines the handler's behavioral logic.
+
+    Attributes:
+        threshold: Optional float threshold for ThresholdMapping pattern.
+            When set, the handler compares the input signal against this value
+            and outputs 1 if input > threshold, else 0.
     """
     name: str  # Handler method name (e.g., "on_hazard_light")
     pattern: str  # Recipe pattern name (e.g., "DirectSignalMapping")
@@ -124,6 +129,7 @@ class HandlerIR:
     output_signals: list[OutputSignalIR] = field(default_factory=list)
     state: StateIR | None = None  # Optional state variable
     periodic_task: PeriodicTaskIR | None = None  # Optional periodic task
+    threshold: float | None = None  # Optional threshold for ThresholdMapping
 
 
 @dataclass

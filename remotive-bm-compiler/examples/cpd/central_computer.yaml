@@ -1,0 +1,86 @@
+# Central Computer — Main CPD logic: fusion, decision, confirmation handling
+# Function:
+#   1. CPD Fusion Logic: AND seat weight + ISOFIX + camera → determine child presence (LogicAnd)
+#   2. CPD Decision Logic: child detected → forward alert + confirmation request to COCKPIT-ECU (DirectSignalMapping)
+#   3. Confirmation Handling: driver confirmed → forward airbag deactivation decision to Zonal ECU (DirectSignalMapping)
+#   4. Airbag decision routing: forward airbag decision to Zonal ECU (DirectSignalMapping)
+# BPMN: Gateway_1abg3si (EvaluateChildPresence) → Event_0zye75p (ChildDetectedThrow to COCKPIT-ECU).
+#        Event_189vcls (DriverDecisionCatch) → Gateway_18k946i (EvaluateDriverDecision) → Event_0dpoz3o (TurnOffAirbagRequestCatch to Zonal ECU)
+# Spec: CHILD-SCD-001 §Central Computer
+# Design: Simulation ECU — direct boolean forwarding, not AI processing.
+
+model:
+  name: CentralComputer
+  ecu_name: CENTRAL
+
+namespaces:
+  # Input: fused CPD data from Zonal ECU on BUS-ZONE-CANFD
+  - name: CENTRAL-ZoneCan0
+    type: can
+    role: input
+
+  # Output: child detection status + confirmation request to COCKPIT-ECU on BUS-COCKPIT-CANFD
+  - name: CENTRAL-CockpitCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: CENTRAL
+
+  # Input: driver confirmation from COCKPIT-ECU on BUS-COCKPIT-CANFD
+  - name: CENTRAL-CockpitCanInput0
+    type: can
+    role: input
+
+  # Output: airbag decision to Zonal ECU on BUS-ZONE-CANFD
+  - name: CENTRAL-ZoneCanOutput0
+    type: can
+    role: output
+    restbus:
+      sender_filter: CENTRAL
+
+handlers:
+  # ── CPD Fusion Logic: AND all sensor inputs → child presence ──
+  # seat_weight AND isofix AND camera → child_detected (LogicAnd)
+
+  - name: on_cpd_fusion
+    pattern: LogicAnd
+    input:
+      namespace: CENTRAL-ZoneCan0
+      frame_filter: CPDZoneInput
+      signals:
+        - CPDZoneInput.SeatWeightValue
+        - CPDZoneInput.ISOFIXStatus
+        - CPDZoneInput.PreprocessedImageData
+    output:
+      namespace: CENTRAL-CockpitCan0
+      signals:
+        - CPDChildDetection.ChildPresenceStatus
+
+  # ── CPD Decision Logic: child detected → forward alert + confirmation request ──
+  # Simulation: when child_detected=true, forward to COCKPIT-ECU
+
+  - name: on_child_detected
+    pattern: DirectSignalMapping
+    input:
+      namespace: CENTRAL-ZoneCan0
+      frame_filter: CPDZoneInput
+      signal: CPDZoneInput.SeatWeightValue
+    output:
+      namespace: CENTRAL-CockpitCan0
+      signals:
+        - CPDChildDetection.ConfirmationRequest
+
+  # ── Confirmation Handling: driver confirmed → forward airbag deactivation ──
+  # Simulation: when driver_confirmed=true → airbag deactivation=true (DirectSignalMapping)
+
+  - name: on_driver_confirmed
+    pattern: DirectSignalMapping
+    input:
+      namespace: CENTRAL-CockpitCanInput0
+      frame_filter: DriverConfirmation
+      signal: DriverConfirmation.DriverConfirmedDeactivation
+    output:
+      namespace: CENTRAL-ZoneCanOutput0
+      signals:
+        - CPDAirbagDecision.AirbagControlDecision
+        - CPDAirbagDecision.DeactivationActive

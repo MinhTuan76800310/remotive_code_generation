@@ -1,0 +1,50 @@
+# SubECU-Seat — Seat sensor acquisition & preprocessing for CPD
+# Function: Acquire seat weight + ISOFIX sensor data, validate availability,
+#           normalize seat weight via threshold comparison (weight > 5.0 → child detected),
+#           transmit normalized seat-related CPD data to Zonal ECU via BUS-SEAT-CANFD
+# BPMN: Activity_1up02m6 (Sensors Acquisition) → Activity_0hdodh4 (Sensors Preprocessing) → Event_1vetijz (NormalizedSensorsMessageThrow)
+# Spec: CHILD-SCD-001 §SubECU-Seat
+
+model:
+  name: SubECUSeat
+  ecu_name: SEAT
+
+namespaces:
+  # Local sensor inputs (seat weight, ISOFIX)
+  - name: SEAT-LocalSensorCan0
+    type: can
+    role: input
+
+  # Output: normalized seat data to Zonal ECU via BUS-SEAT-CANFD
+  - name: SEAT-SeatCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: SEAT
+
+handlers:
+  # Seat weight sensor value → threshold comparison (weight > 5.0 → child detected = 1)
+  # Transmit boolean SeatWeightDetected to Zonal ECU
+  - name: on_seat_weight_threshold
+    pattern: ThresholdMapping
+    threshold: 5.0
+    input:
+      namespace: SEAT-LocalSensorCan0
+      frame_filter: SeatWeightSensor
+      signal: SeatWeightSensor.WeightValue
+    output:
+      namespace: SEAT-SeatCan0
+      signals:
+        - CPDSeatData.SeatWeightDetected
+
+  # ISOFIX sensor status → forward boolean to Zonal ECU
+  - name: on_isofix_status
+    pattern: DirectSignalMapping
+    input:
+      namespace: SEAT-LocalSensorCan0
+      frame_filter: ISOFIXSensor
+      signal: ISOFIXSensor.ISOFIXStatus
+    output:
+      namespace: SEAT-SeatCan0
+      signals:
+        - CPDSeatData.ISOFIXStatus

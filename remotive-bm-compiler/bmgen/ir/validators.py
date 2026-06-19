@@ -38,6 +38,7 @@ def validate(ir: "BehavioralModelIR") -> list[ValidationViolation]:
     violations.extend(_check_resettable_state_has_reset_value(ir))
     violations.extend(_check_unknown_pattern_fails_early(ir))
     violations.extend(_check_novel_logic_handlers_listed(ir))
+    violations.extend(_check_threshold_mapping_has_threshold(ir))
 
     return violations
 
@@ -239,6 +240,26 @@ def _check_novel_logic_handlers_listed(ir: "BehavioralModelIR") -> list[Validati
                 message="; ".join(msg_parts),
             )
         )
+    return violations
+
+
+def _check_threshold_mapping_has_threshold(ir: "BehavioralModelIR") -> list[ValidationViolation]:
+    """Invariant 11: ThresholdMapping pattern requires a threshold value.
+
+    ThresholdMapping compares a single analog input against a float threshold
+    to produce a boolean 0/1 output. Without the threshold value, the handler
+    cannot generate its comparison expression.
+    """
+    violations = []
+    for handler in ir.handlers:
+        if handler.pattern == "ThresholdMapping" and handler.threshold is None:
+            violations.append(
+                ValidationViolation(
+                    rule="threshold_mapping_has_threshold",
+                    message=f"Handler '{handler.name}' uses ThresholdMapping pattern but has no threshold value. "
+                    f"Add a 'threshold' field (e.g., threshold: 5.0) to the handler spec.",
+                )
+            )
     return violations
 
 

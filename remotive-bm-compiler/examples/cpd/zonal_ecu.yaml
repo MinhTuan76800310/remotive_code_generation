@@ -1,0 +1,103 @@
+# Zonal ECU — Zonal hub: fuse sensor data, route to Central Computer, route airbag control to Airbag-ECU
+# Function:
+#   1. Receive normalized seat data (from SubECU-Seat) + normalized image data (from CAM-ECU) on BUS-SEAT-CANFD
+#   2. Route fused data to Central Computer via BUS-ZONE-CANFD (Zone Data Routing)
+#   3. Route airbag control decisions from Central Computer to Airbag-ECU via BUS-SEAT-CANFD
+# BPMN: Event_0iufyuo (NormalizedDataCatch) → Activity_1v2kgjd (Sensors Fusion) → Activity_0638zh1 (Zone Data Routing) →
+#        Event_15qugek (NormalizedDataThrow, split to Central Computer).
+#        Event_16zm9y9 (TurnOffAirbagRequestCatch) → Activity_0atjgmc (Zone Data Routing) → Event_0dpoz3o (TurnOffAirbagControlThrow → Airbag-ECU)
+# Spec: CHILD-SCD-001 §Zonal ECU
+
+model:
+  name: ZonalECU
+  ecu_name: ZONE
+
+namespaces:
+  # Input: normalized seat + camera data from SubECU-Seat & CAM-ECU on BUS-SEAT-CANFD
+  - name: ZONE-SeatCan0
+    type: can
+    role: input
+
+  # Output: fused CPD data to Central Computer on BUS-ZONE-CANFD
+  - name: ZONE-ZoneCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: ZONE
+
+  # Output: airbag control to Airbag-ECU on BUS-SEAT-CANFD
+  - name: ZONE-AirbagCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: ZONE
+
+  # Input: airbag decision from Central Computer on BUS-ZONE-CANFD
+  - name: ZONE-ZoneCanInput0
+    type: can
+    role: input
+
+handlers:
+  # ── Phase 1: Sensor data forwarding to Central Computer ──
+
+  # Seat weight detected (boolean from SubECU-Seat) → forward to Central Computer
+  - name: on_seat_data
+    pattern: DirectSignalMapping
+    input:
+      namespace: ZONE-SeatCan0
+      frame_filter: CPDSeatData
+      signal: CPDSeatData.SeatWeightDetected
+    output:
+      namespace: ZONE-ZoneCan0
+      signals:
+        - CPDZoneInput.SeatWeightValue
+
+  # ISOFIX status from SubECU-Seat → forward to Central Computer
+  - name: on_isofix
+    pattern: DirectSignalMapping
+    input:
+      namespace: ZONE-SeatCan0
+      frame_filter: CPDSeatData
+      signal: CPDSeatData.ISOFIXStatus
+    output:
+      namespace: ZONE-ZoneCan0
+      signals:
+        - CPDZoneInput.ISOFIXStatus
+
+  # Camera child detected result from CAM-ECU → forward to Central Computer
+  - name: on_camera
+    pattern: DirectSignalMapping
+    input:
+      namespace: ZONE-SeatCan0
+      frame_filter: CPDCameraData
+      signal: CPDCameraData.ChildDetected
+    output:
+      namespace: ZONE-ZoneCan0
+      signals:
+        - CPDZoneInput.PreprocessedImageData
+
+  # ── Phase 3: Airbag control routing from Central Computer to Airbag-ECU ──
+
+  # Airbag control decision from Central Computer → route to Airbag-ECU
+  - name: on_airbag_control_forward
+    pattern: DirectSignalMapping
+    input:
+      namespace: ZONE-ZoneCanInput0
+      frame_filter: CPDAirbagDecision
+      signal: CPDAirbagDecision.AirbagControlDecision
+    output:
+      namespace: ZONE-AirbagCan0
+      signals:
+        - CPDAirbagControl.AirbagControlDecision
+
+  # Deactivation active flag from Central Computer → route to Airbag-ECU
+  - name: on_airbag_deactivation_forward
+    pattern: DirectSignalMapping
+    input:
+      namespace: ZONE-ZoneCanInput0
+      frame_filter: CPDAirbagDecision
+      signal: CPDAirbagDecision.DeactivationActive
+    output:
+      namespace: ZONE-AirbagCan0
+      signals:
+        - CPDAirbagControl.DeactivationActive

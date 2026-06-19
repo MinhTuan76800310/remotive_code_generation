@@ -1,0 +1,47 @@
+# CAM-ECU — Camera image acquisition & preprocessing for CPD
+# Function: Acquire passenger monitoring camera image data + availability flag,
+#           forward to Zonal ECU via BUS-SEAT-CANFD
+# BPMN: Activity_0fb5d5v (Camera Data Acquisition) → Activity_0n5f5nx (Camera Data Preprocessing) → Event_1qby1fh (NormalizedImageThrow)
+# Spec: CHILD-SCD-001 §CAM-ECU
+
+model:
+  name: CAMECU
+  ecu_name: CAM
+
+namespaces:
+  # Local camera image input
+  - name: CAM-LocalCameraCan0
+    type: can
+    role: input
+
+  # Output: normalized image data to Zonal ECU via BUS-SEAT-CANFD
+  - name: CAM-SeatCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: CAM
+
+handlers:
+  # Camera image data + availability → forward ChildDetected result to Zonal ECU
+  - name: on_camera_image
+    pattern: DirectSignalMapping
+    input:
+      namespace: CAM-LocalCameraCan0
+      frame_filter: PassengerCamera
+      signal: PassengerCamera.ImageData
+    output:
+      namespace: CAM-SeatCan0
+      signals:
+        - CPDCameraData.ChildDetected
+
+  # Camera availability flag → forward to Zonal ECU
+  - name: on_camera_availability
+    pattern: DirectSignalMapping
+    input:
+      namespace: CAM-LocalCameraCan0
+      frame_filter: PassengerCamera
+      signal: PassengerCamera.CameraAvailability
+    output:
+      namespace: CAM-SeatCan0
+      signals:
+        - CPDCameraData.CameraAvailability

@@ -182,6 +182,9 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
                 cleanup=periodic_spec.get("cleanup", False),
             )
 
+        # Threshold (for ThresholdMapping pattern)
+        threshold = h_spec.get("threshold")
+
         handlers.append(
             HandlerIR(
                 name=name,
@@ -194,6 +197,7 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
                 output_signals=output_signals,
                 state=state_ir,
                 periodic_task=periodic_ir,
+                threshold=threshold,
             )
         )
     return handlers

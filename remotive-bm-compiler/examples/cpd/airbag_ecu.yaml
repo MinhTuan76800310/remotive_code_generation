@@ -1,0 +1,39 @@
+# Airbag-ECU — Final restraint control endpoint
+# Function: Receive CPD-related airbag control information from Zonal ECU,
+#           apply to internal restraint control logic. Remains the final airbag control ECU.
+# BPMN: Event_0qj2x7n (TurrOffAirbagControlCatch) → Activity_0hx3kth (CPD Turn Off Airbag) → Event_0zxvf3g (End CPD)
+# Spec: CHILD-SCD-001 §Airbag-ECU — "CPD Turn Off Airbag Component"
+# CHILD-SPEC-001 §Functional Interaction Logic — "Airbag-ECU shall remain the final airbag control ECU"
+# Design: Simulation ECU — DirectSignalMapping for airbag control forwarding
+
+model:
+  name: AirbagECU
+  ecu_name: AIRBAG
+
+namespaces:
+  # Input: airbag control from Zonal ECU on BUS-SEAT-CANFD
+  - name: AIRBAG-SeatCan0
+    type: can
+    role: input
+
+  # Output: airbag interface status on BUS-SEAT-CANFD
+  - name: AIRBAG-SeatCanOutput0
+    type: can
+    role: output
+    restbus:
+      sender_filter: AIRBAG
+
+handlers:
+  # ── CPD Turn Off Airbag Component ──
+
+  # Airbag control decision from Zonal ECU → forward deactivation status
+  - name: on_airbag_control
+    pattern: DirectSignalMapping
+    input:
+      namespace: AIRBAG-SeatCan0
+      frame_filter: CPDAirbagControl
+      signal: CPDAirbagControl.AirbagControlDecision
+    output:
+      namespace: AIRBAG-SeatCanOutput0
+      signals:
+        - AirbagInterfaceStatus.PassengerAirbagDeactivationStatus
