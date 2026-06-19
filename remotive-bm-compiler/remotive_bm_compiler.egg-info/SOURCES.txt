@@ -15,8 +15,10 @@ bmgen/ir/validators.py
 bmgen/recipes/__init__.py
 bmgen/recipes/base.py
 bmgen/recipes/direct_signal_mapping.py
+bmgen/recipes/logic_gate.py
 bmgen/recipes/periodic_blinking_output.py
 bmgen/recipes/registry.py
+bmgen/recipes/threshold_mapping.py
 bmgen/recipes/toggle_button_state.py
 bmgen/verifier/__init__.py
 bmgen/verifier/behavioral.py
