@@ -39,6 +39,7 @@ def validate(ir: "BehavioralModelIR") -> list[ValidationViolation]:
     violations.extend(_check_unknown_pattern_fails_early(ir))
     violations.extend(_check_novel_logic_handlers_listed(ir))
     violations.extend(_check_threshold_mapping_has_threshold(ir))
+    violations.extend(_check_threshold_mapping_operator_and_direction(ir))
     violations.extend(_check_websocket_listeners(ir))
 
     return violations
@@ -259,6 +260,53 @@ def _check_threshold_mapping_has_threshold(ir: "BehavioralModelIR") -> list[Vali
                     rule="threshold_mapping_has_threshold",
                     message=f"Handler '{handler.name}' uses ThresholdMapping pattern but has no threshold value. "
                     f"Add a 'threshold' field (e.g., threshold: 5.0) to the handler spec.",
+                )
+            )
+    return violations
+
+
+# Allowed comparison operators / directions for ThresholdMapping. Duplicated
+# from the recipe (recipes cannot be imported here without a circular import
+# via registry → recipes → ir), so the closed set is restated. If either set
+# changes, update both in lockstep.
+_THRESHOLD_OPERATORS = {">", ">=", "<", "<=", "==", "!="}
+_THRESHOLD_TRUE_WHEN = {"above", "below"}
+
+
+def _check_threshold_mapping_operator_and_direction(ir: "BehavioralModelIR") -> list[ValidationViolation]:
+    """Invariant 13: ThresholdMapping operator/true_when must be valid.
+
+    This mirrors the recipe-level validate() at the IR layer so that a bad
+    `operator:` (e.g. `=>`) or `true_when:` is rejected inside build_ir() as a
+    proper BuilderError — BEFORE _apply_value_exprs() would otherwise call
+    recipe.output_value_expr() and hit the ValueError defence. Catching it here
+    gives a named rule ("threshold_mapping_invalid_operator" /
+    "threshold_mapping_invalid_true_when") and a clear message close to the YAML.
+    """
+    violations = []
+    for handler in ir.handlers:
+        if handler.pattern != "ThresholdMapping":
+            continue
+        if handler.operator is not None and handler.operator not in _THRESHOLD_OPERATORS:
+            violations.append(
+                ValidationViolation(
+                    rule="threshold_mapping_invalid_operator",
+                    message=(
+                        f"Handler '{handler.name}' has invalid operator {handler.operator!r}. "
+                        f"ThresholdMapping operator must be one of "
+                        f"{sorted(_THRESHOLD_OPERATORS)}."
+                    ),
+                )
+            )
+        if handler.true_when is not None and handler.true_when not in _THRESHOLD_TRUE_WHEN:
+            violations.append(
+                ValidationViolation(
+                    rule="threshold_mapping_invalid_true_when",
+                    message=(
+                        f"Handler '{handler.name}' has invalid true_when {handler.true_when!r}. "
+                        f"ThresholdMapping true_when must be one of "
+                        f"{sorted(_THRESHOLD_TRUE_WHEN)} ('above' or 'below')."
+                    ),
                 )
             )
     return violations

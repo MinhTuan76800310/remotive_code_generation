@@ -118,6 +118,15 @@ class HandlerIR:
         threshold: Optional float threshold for ThresholdMapping pattern.
             When set, the handler compares the input signal against this value
             and outputs 1 if input > threshold, else 0.
+        operator: Optional comparison operator for ThresholdMapping. One of
+            `>`, `>=`, `<`, `<=`, `==`, `!=`. Defaults to `>` (the original
+            behavior) so existing specs without `operator:` render unchanged.
+        true_when: Optional direction for ThresholdMapping. `above` (default)
+            means TRUE (1) when the comparison holds; `below` means TRUE when
+            the comparison does NOT hold (i.e. logical negation). This lets a
+            rule like "child present when weight is LIGHT" be expressed as
+            `operator: ">=", true_when: below` → `1 if not (weight >= 8) else 0`,
+            without falling back to novel_logic.
     """
     name: str  # Handler method name (e.g., "on_hazard_light")
     pattern: str  # Recipe pattern name (e.g., "DirectSignalMapping")
@@ -130,6 +139,8 @@ class HandlerIR:
     state: StateIR | None = None  # Optional state variable
     periodic_task: PeriodicTaskIR | None = None  # Optional periodic task
     threshold: float | None = None  # Optional threshold for ThresholdMapping
+    operator: str | None = None  # Optional comparison operator (default ">")
+    true_when: str | None = None  # Optional direction: "above" (default) | "below"
 
 
 @dataclass

@@ -190,6 +190,11 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
 
         # Threshold (for ThresholdMapping pattern)
         threshold = h_spec.get("threshold")
+        # Optional comparison operator + direction (for ThresholdMapping).
+        # Both default to None → recipe treats absent as ">" / "above" so
+        # existing specs render byte-identically.
+        operator = h_spec.get("operator")
+        true_when = h_spec.get("true_when")
 
         handlers.append(
             HandlerIR(
@@ -204,6 +209,8 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
                 state=state_ir,
                 periodic_task=periodic_ir,
                 threshold=threshold,
+                operator=operator,
+                true_when=true_when,
             )
         )
     return handlers

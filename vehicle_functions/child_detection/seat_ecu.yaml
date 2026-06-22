@@ -9,15 +9,23 @@
 #   TRUE  when weight <  8kg  → child-sized occupant present
 #   FALSE when weight >= 8kg  → adult / above child threshold
 #
-# Why novel_logic (not the built-in ThresholdMapping recipe):
-#   ThresholdMapping generates `1 if input > threshold else 0` — i.e. TRUE when
-#   the input is ABOVE the threshold. Our rule is the inverse: TRUE when BELOW
-#   the threshold (light = child). Since the recipe hard-codes the `>`
-#   comparison, the inverted rule cannot be expressed by ThresholdMapping.
-#   novel_logic=true makes the compiler emit a stub handler carrying the rule
-#   as a structured comment; the one-line comparison is then filled in by hand
-#   in the generated stub:
-#       seat_occupied = False if weight_kg >= 8 else True
+# Recipe: ThresholdMapping (generalized — operator + true_when)
+#   The built-in ThresholdMapping recipe now supports two optional fields:
+#     operator  : the comparison token (default '>'); here '>=' to match the
+#                 author's rule "value >= 8kg".
+#     true_when : which side of the comparison is TRUE (default 'above'); here
+#                 'below' because the rule is INVERTED — SeatOccupied is TRUE
+#                 when the weight is BELOW the threshold (light = child).
+#   With operator '>=' and true_when 'below' the compiler emits:
+#       1 if not (seat_weight_sensor_signal >= 8) else 0
+#   which is exactly "False if weight_kg >= 8 else True" expressed as 0/1.
+#   This replaces the earlier novel_logic stub — the behavior is now generated
+#   deterministically by the recipe, no hand-filled stub needed.
+#
+#   ⚠️ YAML quoting: operator MUST be quoted (operator: ">="). An UNquoted
+#   `operator: >=` is invalid YAML — `>` is the folded-block-scalar indicator,
+#   so it raises yaml.YAMLError at parse time, before ThresholdMapping can
+#   report a friendly error. Omitting operator entirely is also valid (→ '>').
 #
 # CAN out: SeatOccupied → arrow a_seat → CentralHPC
 #   (consumed by CentralHPC's Child Detection Logic: AND with ChildDetectedByCamera)
@@ -42,11 +50,13 @@ namespaces:
 
 handlers:
   # Local seat weight (kg) → threshold rule → publish SeatOccupied (CAN signal a_seat).
-  # Rule to implement in the generated stub:
-  #   seat_occupied = False if weight_kg >= 8 else True
+  # Rule (author): seat_occupied = False if weight_kg >= 8 else True
+  #   → TRUE when weight is BELOW 8kg (child-sized), so operator '>=' + true_when 'below'.
   - name: on_seat_occupancy
-    pattern: SeatWeightThreshold
-    novel_logic: true
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: ">="
+    true_when: below
     input:
       namespace: SEAT-LocalSensorCan0
       frame_filter: SeatWeightSensor

@@ -185,6 +185,15 @@ def _cmd_recipes():
         print(f"    Output: {fields.get('required_output_count', '?')} signal(s)")
         print(f"    Requires state: {fields.get('requires_state', '?')}")
         print(f"    Requires periodic: {fields.get('requires_periodic', '?')}")
+        # Optional recipe-specific fields (e.g. ThresholdMapping's operator/true_when).
+        if "requires_threshold" in fields:
+            print(f"    Requires threshold: {fields['requires_threshold']}")
+        if "optional_operator" in fields:
+            print(f"    Optional operator: {fields['optional_operator']}")
+            print(f"    Optional true_when: {fields.get('optional_true_when', [])}")
+            if fields.get("operator_must_be_yaml_quoted"):
+                print("    ⚠ operator MUST be YAML-quoted (operator: \">=\") — "
+                      "unquoted '>' is a block-scalar indicator and fails at parse time.")
         print()
 
 
