@@ -17,6 +17,7 @@ from bmgen.recipes.toggle_button_state import ToggleButtonStateRecipe
 from bmgen.recipes.periodic_blinking_output import PeriodicBlinkingOutputRecipe
 from bmgen.recipes.logic_gate import LogicGateRecipe
 from bmgen.recipes.threshold_mapping import ThresholdMappingRecipe
+from bmgen.recipes.websocket_bridge import WebsocketBridgeRecipe
 
 
 class RecipeRegistry:
@@ -57,4 +58,6 @@ def create_default_registry() -> RecipeRegistry:
     registry.register(LogicGateRecipe("or"))
     registry.register(LogicGateRecipe("xor"))
     registry.register(LogicGateRecipe("not"))
+    # Model-level recipe: external websocket stream → CAN restbus (not a handler).
+    registry.register(WebsocketBridgeRecipe())
     return registry

@@ -1,5 +1,8 @@
 async def on_reboot(self, request: ControlRequest) -> ControlResponse:
     """Reset all owned state variables and output namespace restbus."""
+{% for ws in websocket_listeners %}
+    self.{{ ws.ws_stop_name }}()
+{% endfor %}
 {% for state in reset_states %}
     self.{{ state.private_var }} = {{ state.reset_value }}
 {% endfor %}

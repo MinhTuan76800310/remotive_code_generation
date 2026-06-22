@@ -1,0 +1,61 @@
+# DriverMonitoringECU — bridges an external camera service (websocket) onto CAN.
+#
+# Demonstrates the WebsocketBridge recipe: an OUTSIDE service (a passenger
+# camera streamer) pushes JSON frames over ws://localhost:1122; this ECU
+# forwards them onto the Remotive CAN restbus as CPDCameraData signals.
+#
+# The websocket is the communication path WITH the outside service — it is NOT
+# a Remotive CAN signal. The ECU's job is to bridge that external stream onto
+# the vehicle CAN bus so other ECUs (Zonal, CentralHPC) can consume it.
+#
+# This example also shows a websocket listener coexisting with a normal
+# CAN-frame handler (on_selftest) — the two are independent.
+#
+# JSON message shape from the camera service:
+#   {"ChildDetected": 0|1, "CameraAvailability": 0|1}
+
+model:
+  name: DMS
+  ecu_name: DMS
+
+namespaces:
+  # Output: camera data published onto the seat CAN bus toward Zonal/CentralHPC
+  - name: DMS-SeatCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: DMS
+
+  # Input: self-test command frame (a normal CAN handler, unrelated to the ws bridge)
+  - name: DMS-DiagCan0
+    type: can
+    role: input
+
+# Model-level websocket listener (external ws → CAN restbus). Runs a background
+# asyncio task for the ECU's whole lifetime; cancelled on exit/reboot.
+websocket_listeners:
+  - name: camera_child_detection
+    url: ws://localhost:1122
+    output_namespace: DMS-SeatCan0
+    # Each entry maps a key in the incoming JSON message → a restbus signal.
+    signal_map:
+      - ws_key: ChildDetected
+        signal: CPDCameraData.ChildDetected
+      - ws_key: CameraAvailability
+        signal: CPDCameraData.CameraAvailability
+    cleanup: true              # required True — task cancelled on exit/reboot
+    reconnect_delay_sec: 2.0   # backoff between reconnects (default 2.0)
+
+handlers:
+  # A normal CAN-frame handler alongside the websocket listener — proves the
+  # two coexist. On a self-test frame, re-publish the camera-availability flag.
+  - name: on_selftest
+    pattern: DirectSignalMapping
+    input:
+      namespace: DMS-DiagCan0
+      frame_filter: DmsSelfTest
+      signal: DmsSelfTest.Trigger
+    output:
+      namespace: DMS-SeatCan0
+      signals:
+        - CPDCameraData.CameraAvailability

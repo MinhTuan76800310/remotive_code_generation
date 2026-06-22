@@ -106,6 +106,30 @@ def build_template_context(
 
     context["handlers"] = handler_contexts
 
+    # Websocket listener context — model-level recipes (not per-handler).
+    # Each listener is dispatched through the WebsocketBridge recipe, then its
+    # output_namespace_var is resolved via ns_var_lookup (the recipe cannot do
+    # this itself because the listener IR does not carry the namespace's
+    # python_var_name — mirrors how _merge_recipe_context fills handler
+    # output_namespace_var).
+    websocket_listener_contexts = []
+    for ws_ir in ir.websocket_listeners:
+        recipe = recipe_registry.get("WebsocketBridge")
+        if recipe is None:
+            raise ValueError("WebsocketBridge recipe not registered")
+        errors = recipe.validate(ws_ir)
+        if errors:
+            raise ValueError(f"Websocket listener '{ws_ir.name}' failed recipe validation: {errors}")
+        ws_ctx = recipe.build_context(ws_ir)
+        merged = dict(ws_ctx.context)
+        merged["output_namespace_var"] = ns_var_lookup.get(ws_ir.output_namespace, "")
+        # The handler_websocket template reads ws_output_namespace_var.
+        merged["ws_output_namespace_var"] = ns_var_lookup.get(ws_ir.output_namespace, "")
+        websocket_listener_contexts.append(merged)
+
+    context["websocket_listeners"] = websocket_listener_contexts
+    context["has_websocket_listeners"] = bool(websocket_listener_contexts)
+
     # Build input namespace var lookup for handlers
     handler_input_namespace_vars = {}
     for handler_ir in ir.handlers:

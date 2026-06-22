@@ -9,7 +9,11 @@ from remotivelabs.topology.behavioral_model import BehavioralModel
 {% if has_reset_handler %}from remotivelabs.topology.control import ControlRequest, ControlResponse
 {% endif %}from remotivelabs.topology.namespaces import filters
 from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
+{% if has_websocket_listeners %}
+import json
 
+import websockets
+{% endif %}
 
 {% if has_state %}
 class {{ model_name }}:
@@ -29,9 +33,16 @@ class {{ model_name }}:
 {% for ticker in tickers %}
     {{ ticker.var_name }}: asyncio.Task | None = None
 {% endfor %}
+{% for ws in websocket_listeners %}
+    {{ ws.ws_task_var_name }}: asyncio.Task | None = None
+{% endfor %}
 
 {% for hb in handler_bodies %}
 {{ hb.body }}
+
+{% endfor %}
+{% for wb in websocket_bodies %}
+{{ wb.body }}
 
 {% endfor %}
 {% if has_reset_handler and reset_handler_body %}
@@ -80,7 +91,19 @@ async def main(avp: BehavioralModelArgs):
             ],
 {% endif %}
         ) as bm:
+{% if has_websocket_listeners %}
+{% for ws in websocket_listeners %}
+            {{ model_name_lower }}.{{ ws.ws_start_name }}()
+{% endfor %}
+            try:
+                await bm.run_forever()
+            finally:
+{% for ws in websocket_listeners %}
+                {{ model_name_lower }}.{{ ws.ws_stop_name }}()
+{% endfor %}
+{% else %}
             await bm.run_forever()
+{% endif %}
 
 
 if __name__ == "__main__":

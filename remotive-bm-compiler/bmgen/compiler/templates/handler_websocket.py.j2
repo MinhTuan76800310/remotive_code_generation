@@ -1,0 +1,42 @@
+def {{ ws_start_name }}(self) -> None:
+    """Launch the websocket bridge {{ ws_name }} as a background task."""
+    self.{{ ws_task_var_name }} = asyncio.create_task(self.{{ ws_handler_name }}())
+
+def {{ ws_stop_name }}(self) -> None:
+    """Cancel the websocket bridge {{ ws_name }} (no-op if not running)."""
+    if self.{{ ws_task_var_name }}:
+        self.{{ ws_task_var_name }}.cancel()
+    self.{{ ws_task_var_name }} = None
+
+async def {{ ws_handler_name }}(self) -> None:
+    """Read {{ ws_url }} forever and forward JSON values to the {{ ws_output_namespace }} restbus.
+
+    Each incoming message is decoded as JSON. For every (ws_key, restbus_signal)
+    pair in the signal map, the value at ws_key is published to the matching
+    restbus signal. On disconnect/error a warning is logged and the listener
+    reconnects after {{ ws_reconnect_delay }}s.
+    """
+    ws_url = "{{ ws_url }}"
+    signal_map = [
+{% for ws_key, restbus_signal in ws_signal_map %}
+        ("{{ ws_key }}", "{{ restbus_signal }}"),
+{% endfor %}
+    ]
+    while True:
+        try:
+            async with websockets.connect(ws_url) as ws:
+                logging.info("ws bridge {{ ws_name }} connected: %s", ws_url)
+                async for raw in ws:
+                    payload = json.loads(raw)
+                    await self.{{ ws_output_namespace_var }}.restbus.update_signals(
+                        *[(restbus_signal, payload.get(ws_key)) for ws_key, restbus_signal in signal_map]
+                    )
+        except asyncio.CancelledError:
+            logging.info("ws bridge {{ ws_name }} cancelled, exiting loop")
+            raise
+        except Exception as exc:
+            logging.warning(
+                "ws bridge {{ ws_name }} error: %s — reconnecting in %.1fs",
+                exc, {{ ws_reconnect_delay }},
+            )
+            await asyncio.sleep({{ ws_reconnect_delay }})

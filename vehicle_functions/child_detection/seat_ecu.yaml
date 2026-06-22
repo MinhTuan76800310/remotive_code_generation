@@ -1,0 +1,57 @@
+# SeatECU — Seat Sensor Detection (weight-threshold logic)
+# Source diagram: CAD_ECU_architecture.drawio — page 2 "ECU CAN I/O", node "seat-box"
+#   Function: "Read seat sensor float value, if value >= 8kg return false else true
+#              → publish SeatOccupied"
+#
+# Semantics (confirmed with author):
+#   The float is a weight in kilograms. A child is light, so:
+#     SeatOccupied = False if weight_kg >= 8 else True
+#   TRUE  when weight <  8kg  → child-sized occupant present
+#   FALSE when weight >= 8kg  → adult / above child threshold
+#
+# Why novel_logic (not the built-in ThresholdMapping recipe):
+#   ThresholdMapping generates `1 if input > threshold else 0` — i.e. TRUE when
+#   the input is ABOVE the threshold. Our rule is the inverse: TRUE when BELOW
+#   the threshold (light = child). Since the recipe hard-codes the `>`
+#   comparison, the inverted rule cannot be expressed by ThresholdMapping.
+#   novel_logic=true makes the compiler emit a stub handler carrying the rule
+#   as a structured comment; the one-line comparison is then filled in by hand
+#   in the generated stub:
+#       seat_occupied = False if weight_kg >= 8 else True
+#
+# CAN out: SeatOccupied → arrow a_seat → CentralHPC
+#   (consumed by CentralHPC's Child Detection Logic: AND with ChildDetectedByCamera)
+
+model:
+  name: SeatECU
+  ecu_name: SEAT
+
+namespaces:
+  # Input: local seat weight sensor (on-board, not on the vehicle CAN).
+  # Carries a float KILOGRAMS value — NOT a pre-computed boolean.
+  - name: SEAT-LocalSensorCan0
+    type: can
+    role: input
+
+  # Output: SeatOccupied (boolean) onto the child-detection input bus toward CentralHPC
+  - name: SEAT-SeatCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: SEAT
+
+handlers:
+  # Local seat weight (kg) → threshold rule → publish SeatOccupied (CAN signal a_seat).
+  # Rule to implement in the generated stub:
+  #   seat_occupied = False if weight_kg >= 8 else True
+  - name: on_seat_occupancy
+    pattern: SeatWeightThreshold
+    novel_logic: true
+    input:
+      namespace: SEAT-LocalSensorCan0
+      frame_filter: SeatWeightSensor
+      signal: SeatWeightSensor.WeightKg
+    output:
+      namespace: SEAT-SeatCan0
+      signals:
+        - ChildDetectionInput.SeatOccupied

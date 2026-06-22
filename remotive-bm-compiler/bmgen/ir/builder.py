@@ -19,6 +19,7 @@ from bmgen.ir.model import (
     ResetHandlerIR,
     RestbusConfigIR,
     StateIR,
+    WebsocketListenerIR,
 )
 from bmgen.ir.validators import ValidationViolation, has_errors, validate
 
@@ -66,6 +67,10 @@ def build_ir(spec: dict) -> BehavioralModelIR:
     # Build reset handler
     reset_handler = _build_reset_handler(spec, handlers)
 
+    # Build model-level websocket listeners (external ws → CAN restbus).
+    # Sibling to handlers — NOT inside handlers[]; a listener has no CAN frame.
+    websocket_listeners = _build_websocket_listeners(spec.get("websocket_listeners", []))
+
     # Collect novel_logic handler names
     novel_logic_handlers = [h.name for h in handlers if h.novel_logic]
 
@@ -77,6 +82,7 @@ def build_ir(spec: dict) -> BehavioralModelIR:
         handlers=handlers,
         reset_handler=reset_handler,
         novel_logic_handlers=novel_logic_handlers,
+        websocket_listeners=websocket_listeners,
     )
 
     # Validate the IR
@@ -271,6 +277,35 @@ def _build_reset_handler(spec: dict, handlers: list[HandlerIR]) -> ResetHandlerI
             namespaces_to_reset=output_ns_names,
         )
     return None
+
+
+def _build_websocket_listeners(ws_specs: list[dict]) -> list[WebsocketListenerIR]:
+    """Build WebsocketListenerIR objects from raw websocket_listeners spec dicts.
+
+    A websocket listener is a model-level concern (sibling to handlers/), not a
+    handler: it runs a background asyncio task for the ECU's whole lifetime,
+    bridging an external websocket stream onto a CAN output namespace's restbus.
+    Namespace-existence and restbus checks are deferred to validators (Invariant
+    12) — the builder only extracts fields here.
+    """
+    listeners: list[WebsocketListenerIR] = []
+    for ws_spec in ws_specs:
+        signal_map_spec = ws_spec.get("signal_map", []) or []
+        signal_map = [
+            (m.get("ws_key", ""), m.get("signal", ""))
+            for m in signal_map_spec
+        ]
+        listeners.append(
+            WebsocketListenerIR(
+                name=ws_spec.get("name", ""),
+                url=ws_spec.get("url", ""),
+                output_namespace=ws_spec.get("output_namespace", ""),
+                signal_map=signal_map,
+                cleanup=ws_spec.get("cleanup", True),
+                reconnect_delay_sec=float(ws_spec.get("reconnect_delay_sec", 2.0)),
+            )
+        )
+    return listeners
 
 
 def _apply_value_exprs(ir: BehavioralModelIR) -> None:

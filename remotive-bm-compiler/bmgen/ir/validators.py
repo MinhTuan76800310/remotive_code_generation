@@ -39,6 +39,7 @@ def validate(ir: "BehavioralModelIR") -> list[ValidationViolation]:
     violations.extend(_check_unknown_pattern_fails_early(ir))
     violations.extend(_check_novel_logic_handlers_listed(ir))
     violations.extend(_check_threshold_mapping_has_threshold(ir))
+    violations.extend(_check_websocket_listeners(ir))
 
     return violations
 
@@ -260,6 +261,108 @@ def _check_threshold_mapping_has_threshold(ir: "BehavioralModelIR") -> list[Vali
                     f"Add a 'threshold' field (e.g., threshold: 5.0) to the handler spec.",
                 )
             )
+    return violations
+
+
+def _check_websocket_listeners(ir: "BehavioralModelIR") -> list[ValidationViolation]:
+    """Invariant 12: websocket_listeners must be well-formed.
+
+    A websocket listener bridges an external stream onto a CAN output namespace.
+    Because invariants 3/4/5 only inspect ir.handlers (and a ws-only ECU has
+    handlers: []), the listener's own output_namespace would otherwise slip past
+    every existing namespace/restbus check. This invariant closes that gap:
+
+    - each listener.name is non-empty and unique within ir.websocket_listeners
+    - each listener.url starts with 'ws://' or 'wss://'
+    - each listener.output_namespace references an existing namespace whose role
+      is 'output'/'both' AND which has a restbus config (mirrors invariants 4+5)
+    - each listener.signal_map is non-empty and every (ws_key, signal) pair has
+      non-empty strings
+    - each listener.cleanup is True (the background task must be cancellable)
+    """
+    violations = []
+    ns_by_name = {ns.name: ns for ns in ir.namespaces}
+
+    names = [ws.name for ws in ir.websocket_listeners]
+    for ws in ir.websocket_listeners:
+        if not ws.name:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message="websocket_listener is missing a 'name'",
+                )
+            )
+        elif names.count(ws.name) > 1:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener name '{ws.name}' is not unique",
+                )
+            )
+
+        if not (ws.url.startswith("ws://") or ws.url.startswith("wss://")):
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' has invalid url '{ws.url}' "
+                    f"(must start with ws:// or wss://)",
+                )
+            )
+
+        out_ns = ns_by_name.get(ws.output_namespace)
+        if out_ns is None:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' references non-existent "
+                    f"output_namespace '{ws.output_namespace}'",
+                )
+            )
+        elif out_ns.role not in ("output", "both"):
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' output_namespace '{ws.output_namespace}' "
+                    f"has role '{out_ns.role}' (must be 'output' or 'both')",
+                )
+            )
+        elif out_ns.restbus is None:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' output_namespace '{ws.output_namespace}' "
+                    f"has no restbus configuration (required to publish signals)",
+                )
+            )
+
+        if not ws.signal_map:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' has an empty signal_map "
+                    f"(at least one ws_key → signal mapping is required)",
+                )
+            )
+        else:
+            for ws_key, signal in ws.signal_map:
+                if not ws_key or not signal:
+                    violations.append(
+                        ValidationViolation(
+                            rule="websocket_listener_invalid",
+                            message=f"websocket_listener '{ws.name}' has a signal_map entry with an empty "
+                            f"ws_key or signal: ({ws_key!r}, {signal!r})",
+                        )
+                    )
+
+        if not ws.cleanup:
+            violations.append(
+                ValidationViolation(
+                    rule="websocket_listener_invalid",
+                    message=f"websocket_listener '{ws.name}' has cleanup={ws.cleanup} "
+                    f"(must be True — the background task must be cancelled on exit/reboot)",
+                )
+            )
+
     return violations
 
 

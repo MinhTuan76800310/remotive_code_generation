@@ -72,6 +72,18 @@ def generate(
             "body": _indent_body(body.strip(), indent=4),
         })
 
+    # Pre-render websocket listener templates (model-level, not handlers).
+    # Each listener context already has ws_output_namespace_var resolved by
+    # context_builder. Gated: empty list → no bodies → main.py.j2 renders the
+    # plain `await bm.run_forever()` path (byte-identical to pre-websocket).
+    websocket_bodies = []
+    for ws in context.get("websocket_listeners", []):
+        template = env.get_template("handler_websocket.py.j2")
+        body = template.render(**ws)
+        websocket_bodies.append({
+            "body": _indent_body(body.strip(), indent=4),
+        })
+
     # Pre-render reset handler if needed
     reset_handler_body = ""
     if context.get("has_reset_handler") and context.get("reset_states"):
@@ -79,12 +91,14 @@ def generate(
         reset_ctx = {
             "reset_states": context["reset_states"],
             "reset_namespace_vars": context.get("reset_namespace_vars", []),
+            "websocket_listeners": context.get("websocket_listeners", []),
         }
         reset_handler_body = _indent_body(reset_template.render(**reset_ctx).strip(), indent=4)
 
     # Build the full main.py context with pre-rendered handler bodies
     main_context = dict(context)
     main_context["handler_bodies"] = handler_bodies
+    main_context["websocket_bodies"] = websocket_bodies
     main_context["reset_handler_body"] = reset_handler_body
 
     # Render main.py

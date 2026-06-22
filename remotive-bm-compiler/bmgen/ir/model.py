@@ -144,6 +144,39 @@ class ResetHandlerIR:
 
 
 @dataclass
+class WebsocketListenerIR:
+    """A model-level websocket listener that bridges an external stream onto CAN.
+
+    A websocket listener is NOT a handler. Handlers are triggered by incoming
+    CAN frames (create_input_handler + FrameFilter); a websocket has no CAN
+    frame, so it cannot be a handler. Instead, a listener is a long-running
+    background asyncio task launched at model startup (inside the
+    BehavioralModel context, before run_forever) and cancelled on exit/reboot.
+
+    The listener reads JSON messages from `url`, extracts each `ws_key` from
+    the payload, and publishes the value to the matching restbus signal on
+    `output_namespace`. On disconnect/error it logs a warning and reconnects
+    after `reconnect_delay_sec` seconds.
+
+    Attributes:
+        name: Unique listener identifier (used to derive generated method names).
+        url: Websocket endpoint, must start with ws:// or wss://.
+        output_namespace: Name of the CAN output namespace to publish onto.
+            Must reference an existing NamespaceIR with role output/both + restbus.
+        signal_map: List of (ws_key, restbus_signal) pairs mapping JSON payload
+            keys to CAN restbus signals. At least one entry required.
+        cleanup: Must be True — the background task must be cancelled on exit.
+        reconnect_delay_sec: Backoff between reconnect attempts (default 2.0).
+    """
+    name: str
+    url: str
+    output_namespace: str
+    signal_map: list[tuple[str, str]] = field(default_factory=list)
+    cleanup: bool = True
+    reconnect_delay_sec: float = 2.0
+
+
+@dataclass
 class BehavioralModelIR:
     """Top-level IR representing a complete behavioral model spec.
 
@@ -156,6 +189,10 @@ class BehavioralModelIR:
     handlers: list[HandlerIR] = field(default_factory=list)
     reset_handler: ResetHandlerIR | None = None
     novel_logic_handlers: list[str] = field(default_factory=list)
+    # Model-level websocket listeners (external ws → CAN restbus). Sibling to
+    # handlers/reset_handler — NOT inside handlers[]. Defaults to [] so every
+    # existing model that omits the websocket_listeners: key is unaffected.
+    websocket_listeners: list[WebsocketListenerIR] = field(default_factory=list)
 
 
 def _derive_python_var_name(namespace_name: str) -> str:

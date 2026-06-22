@@ -110,19 +110,24 @@ def run_composition_checks(
                 report.add_warning("duplicate_signal_source", ", ".join(w[0] for w in writers),
                                    f"Signal '{signal}' written by multiple handlers on different triggers: {triggers}")
 
-    # Check 4: periodic_tasks_have_cleanup
+    # Check 4: background_tasks_have_cleanup (periodic tasks + websocket listeners)
+    # Every long-running background asyncio task must declare cleanup=True so it
+    # is cancelled on exit/reboot — otherwise it leaks. Covers both periodic
+    # blink tasks (per-handler) and websocket listener tasks (model-level).
     periodic_tasks = [h for h in ir.handlers if h.periodic_task is not None]
-    all_have_cleanup = all(h.periodic_task.cleanup for h in periodic_tasks)
-    if not periodic_tasks:
-        report.add_check("composition", "periodic_tasks_have_cleanup", "PASS",
-                         "No periodic tasks (check N/A)")
+    ws_listeners = list(ir.websocket_listeners)
+    all_have_cleanup = all(h.periodic_task.cleanup for h in periodic_tasks) and all(ws.cleanup for ws in ws_listeners)
+    if not periodic_tasks and not ws_listeners:
+        report.add_check("composition", "background_tasks_have_cleanup", "PASS",
+                         "No background tasks (check N/A)")
     elif all_have_cleanup:
-        report.add_check("composition", "periodic_tasks_have_cleanup", "PASS",
-                         "All periodic tasks have cleanup=True")
+        report.add_check("composition", "background_tasks_have_cleanup", "PASS",
+                         "All background tasks (periodic + websocket) have cleanup=True")
     else:
-        bad_handlers = [h.name for h in periodic_tasks if not h.periodic_task.cleanup]
-        report.add_check("composition", "periodic_tasks_have_cleanup", "FAIL",
-                         f"Periodic tasks without cleanup: {bad_handlers}")
+        bad_periodic = [h.name for h in periodic_tasks if not h.periodic_task.cleanup]
+        bad_ws = [ws.name for ws in ws_listeners if not ws.cleanup]
+        report.add_check("composition", "background_tasks_have_cleanup", "FAIL",
+                         f"Background tasks without cleanup: periodic={bad_periodic}, websocket={bad_ws}")
         all_pass = False
 
     # Check 5: reset_covered_all_owned_states
