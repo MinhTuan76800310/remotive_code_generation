@@ -24,7 +24,7 @@ import pytest
 from bmgen.compiler.context_builder import build_template_context
 from bmgen.compiler.python_generator import generate
 from bmgen.ir.builder import build_ir, BuilderError
-from bmgen.ir.model import HandlerIR, InputSignalIR, OutputSignalIR
+from bmgen.ir.model import HandlerIR, InputSignalIR, OutputGroupIR, OutputSignalIR
 from bmgen.ir.parser import parse_yaml_string
 from bmgen.recipes.registry import create_default_registry
 from bmgen.recipes.threshold_mapping import ThresholdMappingRecipe
@@ -102,8 +102,8 @@ def _value_expr_for(**overrides) -> str:
     spec = parse_yaml_string(_threshold_handler_spec(**overrides))
     ir = build_ir(spec)
     handler = ir.handlers[0]
-    assert handler.output_signals, "ThresholdMapping handler must have outputs"
-    return handler.output_signals[0].value_expr
+    assert handler.output_groups, "ThresholdMapping handler must have outputs"
+    return handler.output_groups[0].signals[0].value_expr
 
 
 def _make_handler_ir(
@@ -119,8 +119,10 @@ def _make_handler_ir(
         input_frame_filter="SeatWeightSensor",
         input_signals=[InputSignalIR(name="SeatWeightSensor.WeightKg",
                                      python_var_name="weight_kg")],
-        output_namespace="SEAT-SeatCan0",
-        output_signals=[OutputSignalIR(name="ChildDetectionInput.SeatOccupied")],
+        output_groups=[OutputGroupIR(
+            namespace="SEAT-SeatCan0",
+            signals=[OutputSignalIR(name="ChildDetectionInput.SeatOccupied")],
+        )],
         threshold=threshold,
         operator=operator,
         true_when=true_when,

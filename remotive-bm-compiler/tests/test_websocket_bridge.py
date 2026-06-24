@@ -130,17 +130,14 @@ class TestWebsocketListenerValidation:
 
     # Shared header for all "one bad listener" tests — only the listener block
     # differs. Block-style YAML so the spec parses and reaches the validator
-    # (Invariant 12), not the YAML parser.
+    # (Invariant 12), not the YAML parser. Uses the new `namespace_types:`
+    # schema (service_oriented); inference auto-creates restbus.
     _BASE = """
 model:
   name: DMS
   ecu_name: DMS
-namespaces:
-  - name: DMS-Out0
-    type: can
-    role: output
-    restbus:
-      sender_filter: DMS
+namespace_types:
+  DMS-Out0: can
 websocket_listeners:
 {listeners}
 handlers: []
@@ -173,18 +170,23 @@ handlers: []
 """)
         with pytest.raises(BuilderError) as exc:
             build_ir(parse_yaml_string(spec))
-        assert any("websocket" in v.rule and "namespace" in v.message.lower() for v in exc.value.violations)
+        assert any(
+            v.rule == "namespace_type_required_for_referenced"
+            and "websocket_listener" in v.message
+            for v in exc.value.violations
+        )
 
+    # Defensive test: with the new schema, restbus is auto-created for any
+    # output/both namespace, so a user CANNOT bypass it. The old failure path
+    # (missing restbus on a declared output namespace) is unreachable. This
+    # positive case asserts the inference invariant holds.
     def test_output_namespace_without_restbus_fails(self):
-        # DMS-Out0 here has role: output but NO restbus (override the base header).
         spec = """
 model:
   name: DMS
   ecu_name: DMS
-namespaces:
-  - name: DMS-Out0
-    type: can
-    role: output
+namespace_types:
+  DMS-Out0: can
 websocket_listeners:
   - name: ws1
     url: ws://localhost:1122
@@ -195,9 +197,10 @@ websocket_listeners:
     cleanup: true
 handlers: []
 """
-        with pytest.raises(BuilderError) as exc:
-            build_ir(parse_yaml_string(spec))
-        assert any("websocket" in v.rule and "restbus" in v.message.lower() for v in exc.value.violations)
+        ir = build_ir(parse_yaml_string(spec))
+        out_ns = next(n for n in ir.namespaces if n.name == "DMS-Out0")
+        assert out_ns.restbus is not None
+        assert out_ns.restbus.sender_filter == "DMS"
 
     def test_empty_signal_map_fails(self):
         spec = self._spec("""  - name: ws1

@@ -117,12 +117,8 @@ class TestHandlerNamespaceReferences:
 model:
   name: BCM
   ecu_name: BCM
-namespaces:
-  - name: BCM-BodyCan0
-    type: can
-    role: output
-    restbus:
-      sender_filter: BCM
+namespace_types:
+  BCM-BodyCan0: can
 handlers:
   - name: on_test
     pattern: DirectSignalMapping
@@ -137,17 +133,17 @@ handlers:
 """
         with pytest.raises(BuilderError) as exc_info:
             build_ir(parse_yaml_string(spec))
-        assert any(v.rule == "handler_input_namespace_exists" for v in exc_info.value.violations)
+        # Strict-required (14) fires because NONEXISTENT-NAMESPACE is referenced
+        # but not declared in namespace_types:.
+        assert any(v.rule == "namespace_type_required_for_referenced" for v in exc_info.value.violations)
 
     def test_nonexistent_output_namespace_fail(self):
         spec = """
 model:
   name: BCM
   ecu_name: BCM
-namespaces:
-  - name: BCM-DriverCan0
-    type: can
-    role: input
+namespace_types:
+  BCM-DriverCan0: can
 handlers:
   - name: on_test
     pattern: DirectSignalMapping
@@ -162,7 +158,7 @@ handlers:
 """
         with pytest.raises(BuilderError) as exc_info:
             build_ir(parse_yaml_string(spec))
-        assert any(v.rule == "handler_output_namespace_exists" for v in exc_info.value.violations)
+        assert any(v.rule == "namespace_type_required_for_referenced" for v in exc_info.value.violations)
 
 
 class TestOutputNamespaceRestbus:
@@ -173,18 +169,18 @@ class TestOutputNamespaceRestbus:
         restbus_violations = [v for v in violations if v.rule == "output_namespace_has_restbus"]
         assert len(restbus_violations) == 0
 
+    # Invariant 5 (`output_namespace_has_restbus`) is now defense-in-depth:
+    # `_infer_namespaces` auto-creates RestbusConfig for any namespace with
+    # role output/both, so a spec cannot reach the IR layer without a restbus.
+    # The old `restbus:` field is gone from the YAML schema entirely.
     def test_output_without_restbus_fail(self):
         spec = """
 model:
   name: BCM
   ecu_name: BCM
-namespaces:
-  - name: BCM-BodyCan0
-    type: can
-    role: output
-  - name: BCM-DriverCan0
-    type: can
-    role: input
+namespace_types:
+  BCM-BodyCan0: can
+  BCM-DriverCan0: can
 handlers:
   - name: on_test
     pattern: DirectSignalMapping
@@ -197,9 +193,14 @@ handlers:
       signals:
         - Out.Signal
 """
-        with pytest.raises(BuilderError) as exc_info:
-            build_ir(parse_yaml_string(spec))
-        assert any(v.rule == "output_namespace_has_restbus" for v in exc_info.value.violations)
+        # With the new schema the output namespace gets a restbus auto-created.
+        # This test now asserts the positive case: the build succeeds.
+        ir = build_ir(parse_yaml_string(spec))
+        out_ns = next(n for n in ir.namespaces if n.name == "BCM-BodyCan0")
+        # Referenced only via output: → role "output" (input is on BCM-DriverCan0).
+        assert out_ns.role == "output"
+        assert out_ns.restbus is not None
+        assert out_ns.restbus.sender_filter == "BCM"
 
 
 class TestUnknownPattern:
@@ -299,3 +300,173 @@ class TestToggleButtonIRConstruction:
     def test_toggle_ir_has_reset_handler(self, bcm_toggle_ir):
         assert bcm_toggle_ir.reset_handler is not None
         assert len(bcm_toggle_ir.reset_handler.states_to_reset) > 0
+
+
+class TestNamespaceTypesSchema:
+    """Invariants added with the `namespace_types:` schema (service_oriented):
+
+    14. `namespace_type_required_for_referenced` (error) — every referenced
+        namespace must be declared in `namespace_types:`.
+    15. `namespace_type_unknown` (error) — every type value must be in the
+        closed set (today: {can}).
+    16. `namespace_type_orphan` (warning) — every key in `namespace_types:`
+        that has zero refs across handlers + ws produces a warning (severity
+        "warning", not "error").
+
+    These rules live in `validate_namespace_types(spec, ir)` rather than the
+    core `validate(ir)` because they need the raw spec to inspect the type map.
+    """
+
+    def test_rule14_referenced_namespace_missing_from_types(self):
+        spec = """
+model:
+  name: BCM
+  ecu_name: BCM
+namespace_types:
+  BCM-BodyCan0: can
+handlers:
+  - name: on_test
+    pattern: DirectSignalMapping
+    input:
+      namespace: NONEXISTENT
+      frame_filter: Test
+      signal: Test.Value
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - Out.Signal
+"""
+        with pytest.raises(BuilderError) as exc_info:
+            build_ir(parse_yaml_string(spec))
+        violations = [v for v in exc_info.value.violations
+                      if v.rule == "namespace_type_required_for_referenced"]
+        assert len(violations) == 1
+        assert "NONEXISTENT" in violations[0].message
+        assert violations[0].severity == "error"
+
+    def test_rule14_skipped_when_legacy_namespaces_block_present(self):
+        # Back-compat window: deprecated `namespaces:` block skips rule 14.
+        # The duplicate-name check still fires (handled separately in builder).
+        spec = """
+model:
+  name: BCM
+  ecu_name: BCM
+namespaces:
+  - name: BCM-BodyCan0
+    type: can
+    role: output
+    restbus:
+      sender_filter: BCM
+handlers:
+  - name: on_test
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-BodyCan0
+      frame_filter: Test
+      signal: Test.Value
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - Out.Signal
+"""
+        # Should NOT raise (rule 14 skipped, no other invariant trips).
+        with pytest.warns(DeprecationWarning):
+            ir = build_ir(parse_yaml_string(spec))
+        assert any(n.name == "BCM-BodyCan0" for n in ir.namespaces)
+
+    def test_rule15_unknown_type_value_rejected(self):
+        spec = """
+model:
+  name: BCM
+  ecu_name: BCM
+namespace_types:
+  BCM-BodyCan0: ethernet
+handlers:
+  - name: on_test
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-BodyCan0
+      frame_filter: Test
+      signal: Test.Value
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - Out.Signal
+"""
+        with pytest.raises(BuilderError) as exc_info:
+            build_ir(parse_yaml_string(spec))
+        violations = [v for v in exc_info.value.violations
+                      if v.rule == "namespace_type_unknown"]
+        assert len(violations) == 1
+        assert "ethernet" in violations[0].message
+        assert violations[0].severity == "error"
+
+    def test_rule16_orphan_key_produces_warning(self):
+        spec = """
+model:
+  name: BCM
+  ecu_name: BCM
+namespace_types:
+  BCM-BodyCan0: can
+  BCM-ORPHAN: can
+handlers:
+  - name: on_test
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-BodyCan0
+      frame_filter: Test
+      signal: Test.Value
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - Out.Signal
+"""
+        # Rule 16 is a WARNING, not an error — build succeeds.
+        ir = build_ir(parse_yaml_string(spec))
+        # Run the validator directly to inspect warnings (build_ir swallows them).
+        from bmgen.ir.validators import validate_namespace_types
+        violations = validate_namespace_types(
+            {"model": {"name": "BCM", "ecu_name": "BCM"},
+             "namespace_types": {"BCM-BodyCan0": "can", "BCM-ORPHAN": "can"},
+             "handlers": [{"name": "on_test", "pattern": "DirectSignalMapping",
+                           "input": {"namespace": "BCM-BodyCan0", "frame_filter": "T", "signal": "T.s"},
+                           "output": {"namespace": "BCM-BodyCan0", "signals": ["O.s"]}}]},
+            ir,
+        )
+        orphans = [v for v in violations if v.rule == "namespace_type_orphan"]
+        assert len(orphans) == 1
+        assert orphans[0].severity == "warning"
+        assert "BCM-ORPHAN" in orphans[0].message
+        # Inferred IR must NOT include the orphan (inference only adds refs).
+        assert not any(n.name == "BCM-ORPHAN" for n in ir.namespaces)
+
+    def test_rule16_referenced_namespace_no_warning(self):
+        spec = """
+model:
+  name: BCM
+  ecu_name: BCM
+namespace_types:
+  BCM-BodyCan0: can
+handlers:
+  - name: on_test
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-BodyCan0
+      frame_filter: Test
+      signal: Test.Value
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - Out.Signal
+"""
+        ir = build_ir(parse_yaml_string(spec))
+        from bmgen.ir.validators import validate_namespace_types
+        violations = validate_namespace_types(
+            {"model": {"name": "BCM", "ecu_name": "BCM"},
+             "namespace_types": {"BCM-BodyCan0": "can"},
+             "handlers": [{"name": "on_test", "pattern": "DirectSignalMapping",
+                           "input": {"namespace": "BCM-BodyCan0", "frame_filter": "T", "signal": "T.s"},
+                           "output": {"namespace": "BCM-BodyCan0", "signals": ["O.s"]}}]},
+            ir,
+        )
+        assert not any(v.rule == "namespace_type_orphan" for v in violations)
