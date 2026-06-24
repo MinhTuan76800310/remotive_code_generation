@@ -1,0 +1,310 @@
+<mxfile host="65bd71144e">
+    <diagram id="cad-ecu-arch" name="CAD ECU Architecture">
+        <mxGraphModel dx="996" dy="617" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1050" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="ECUs and CAN communication" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#000000;whiteSpace=wrap;" parent="1" vertex="1">
+                    <mxGeometry x="350" y="20" width="1000" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="seat" value="SeatECU&#xa;━━━━━━━━━&#xa;Seat Sensor Detection&#xa;&#xa;CAN in : SeatWeightSensor.WeightKg&#xa;CAN out: SeatInput.SeatOccupied" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;verticalAlign=top;spacingTop=8;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="90" width="280" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="dms" value="DriverMonitoringECU&#xa;━━━━━━━━━&#xa;Child Detection by Camera&#xa;&#xa;WS in : ws://localhost:1122&#xa;CAN out: CameraInput.ChildDetectedByCamera" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;verticalAlign=top;spacingTop=8;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="90" width="300" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="airbag" value="AirbagControlUnit&#xa;━━━━━━━━━&#xa;Provide Airbag Status&#xa;&#xa;CAN in : AirbagStatusSensor.AirbagStatus&#xa;CAN out: AirbagStatusReport.AirbagStatus&#xa;CAN in : AirbagControlCommand.AirbagControlCommand&#xa;CAN out: AirbagActuatorState.AirbagActuated" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;verticalAlign=top;spacingTop=8;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1160" y="90" width="320" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="central" value="CentralHPC" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="310" width="900" height="360" as="geometry"/>
+                </mxCell>
+                <mxCell id="cdl" value="1. Child Detection Logic (Stateful Fusion)&#xa;&#xa;SeatInput.SeatOccupied AND CameraInput.ChildDetectedByCamera&#xa;→ ChildAlert.ChildAlertActive&#xa;(two separate CAN frames)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=11;verticalAlign=top;spacingTop=6;align=center;fontStyle=1;" parent="central" vertex="1">
+                    <mxGeometry x="20" y="40" width="430" height="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="dt" value="" style="shape=table;startSize=0;container=1;collapsible=0;childLayout=tableLayout;fillColor=none;strokeColor=#000000;" parent="central" vertex="1">
+                    <mxGeometry x="35" y="110" width="380" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr0" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=#000000;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;portConstraint=eastwest;fontStyle=1;" parent="dt" vertex="1">
+                    <mxGeometry width="380" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr0c0" value="SeatInput.SeatOccupied" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=10;" parent="dtr0" vertex="1">
+                    <mxGeometry width="130" height="30" as="geometry">
+                        <mxRectangle width="130" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr0c1" value="CameraInput.ChildDetectedByCamera" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=10;" parent="dtr0" vertex="1">
+                    <mxGeometry x="130" width="160" height="30" as="geometry">
+                        <mxRectangle width="160" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr0c2" value="ChildAlert.ChildAlertActive" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=10;" parent="dtr0" vertex="1">
+                    <mxGeometry x="290" width="90" height="30" as="geometry">
+                        <mxRectangle width="90" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=#000000;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;portConstraint=eastwest;" parent="dt" vertex="1">
+                    <mxGeometry y="30" width="380" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr1c0" value="True" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr1" vertex="1">
+                    <mxGeometry width="130" height="30" as="geometry">
+                        <mxRectangle width="130" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr1c1" value="True" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr1" vertex="1">
+                    <mxGeometry x="130" width="160" height="30" as="geometry">
+                        <mxRectangle width="160" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr1c2" value="True" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=10;" parent="dtr1" vertex="1">
+                    <mxGeometry x="290" width="90" height="30" as="geometry">
+                        <mxRectangle width="90" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr2" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=#000000;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;portConstraint=eastwest;" parent="dt" vertex="1">
+                    <mxGeometry y="60" width="380" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr2c0" value="True" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr2" vertex="1">
+                    <mxGeometry width="130" height="30" as="geometry">
+                        <mxRectangle width="130" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr2c1" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr2" vertex="1">
+                    <mxGeometry x="130" width="160" height="30" as="geometry">
+                        <mxRectangle width="160" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr2c2" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr2" vertex="1">
+                    <mxGeometry x="290" width="90" height="30" as="geometry">
+                        <mxRectangle width="90" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr3" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=#000000;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;portConstraint=eastwest;" parent="dt" vertex="1">
+                    <mxGeometry y="90" width="380" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr3c0" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr3" vertex="1">
+                    <mxGeometry width="130" height="30" as="geometry">
+                        <mxRectangle width="130" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr3c1" value="True" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr3" vertex="1">
+                    <mxGeometry x="130" width="160" height="30" as="geometry">
+                        <mxRectangle width="160" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr3c2" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr3" vertex="1">
+                    <mxGeometry x="290" width="90" height="30" as="geometry">
+                        <mxRectangle width="90" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr4" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=#000000;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;portConstraint=eastwest;" parent="dt" vertex="1">
+                    <mxGeometry y="120" width="380" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="dtr4c0" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr4" vertex="1">
+                    <mxGeometry width="130" height="30" as="geometry">
+                        <mxRectangle width="130" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr4c1" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr4" vertex="1">
+                    <mxGeometry x="130" width="160" height="30" as="geometry">
+                        <mxRectangle width="160" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dtr4c2" value="False" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;overflow=hidden;fillColor=#ffffff;strokeColor=#000000;fontSize=10;" parent="dtr4" vertex="1">
+                    <mxGeometry x="290" width="90" height="30" as="geometry">
+                        <mxRectangle width="90" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="alert_logic" value="ChildAlert → CockpitHMIECU&#xa;(AND-gate output: ChildAlert.ChildAlertActive)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#d79b00;fontColor=#000000;fontSize=10;verticalAlign=middle;align=center;fontStyle=2;" parent="central" vertex="1">
+                    <mxGeometry x="35" y="272" width="380" height="56" as="geometry"/>
+                </mxCell>
+                <mxCell id="ddp" value="2. Driver Decision Processing&#xa;&#xa;IF DriverDecision.TurnAirbagOff == 1&#xa;THEN → AirbagControlCommand.AirbagControlCommand&#xa;(passthrough to AirbagControlUnit)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=11;verticalAlign=top;spacingTop=6;align=center;fontStyle=1;" parent="central" vertex="1">
+                    <mxGeometry x="470" y="40" width="410" height="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="cockpit" value="CockpitHMIECU&#xa;━━━━━━━━━&#xa;Display child warning&#xa;Ask driver: Keep Airbag ON / Turn Airbag OFF&#xa;&#xa;CAN in : ChildAlert.ChildAlertActive&#xa;CAN out: HmiChildWarning.ChildAlertActive&#xa;CAN in : HmiDriverAction.TurnAirbagOff&#xa;CAN out: DriverDecision.TurnAirbagOff" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=12;verticalAlign=top;spacingTop=8;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="780" width="500" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_seat" value="SeatInput.SeatOccupied" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.5;exitY=1;entryX=0.1;entryY=0;" parent="1" source="seat" target="central" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_dms" value="CameraInput.ChildDetectedByCamera" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="dms" target="central" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_abstatus" value="AirbagStatusReport.AirbagStatus" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.75;exitY=1;entryX=0.9;entryY=0;" parent="1" source="airbag" target="central" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_abcmd" value="AirbagControlCommand" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;dashed=1;exitX=0.95;exitY=0;entryX=0.4;entryY=1;" parent="1" source="central" target="airbag" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_alert" value="ChildAlert" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.4;exitY=1;entryX=0.4;entryY=0;" parent="1" source="central" target="cockpit" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_decision" value="DriverDecision" style="endArrow=block;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.6;exitY=0;entryX=0.6;entryY=1;" parent="1" source="cockpit" target="central" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="cad-ecu-io" name="ECU CAN I/O">
+        <mxGraphModel dx="793" dy="2017" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1400" math="0" shadow="0">
+            <root>
+                <mxCell id="p2-0"/>
+                <mxCell id="p2-1" parent="p2-0"/>
+                <mxCell id="p2-title" value="ECU Functions and CAN Signals" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#000000;whiteSpace=wrap;" parent="p2-1" vertex="1">
+                    <mxGeometry x="230" y="-70" width="900" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="seat-box" value="SeatECU" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="p2-1" vertex="1">
+                    <mxGeometry x="520" y="30" width="360" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="seat-f1" value="Read SeatWeightSensor.WeightKg (kg)&lt;br&gt;threshold: &amp;gt;= 8kg → adult (SeatOccupied=0)&lt;br&gt;threshold: &amp;lt; 8kg → child (SeatOccupied=1)&lt;br&gt;→ publish SeatInput.SeatOccupied" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="seat-box" vertex="1">
+                    <mxGeometry x="22.5" y="40" width="315" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2-a-seat" value="SeatInput.SeatOccupied" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" source="seat-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="100" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="FhwNJj-DyhF8e5Cwvmet-1" value="SeatWeightSensor.WeightKg" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="99.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="99.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dms-box" value="DriverMonitoringECU" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="p2-1" vertex="1">
+                    <mxGeometry x="520" y="240" width="360" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="dms-f1" value="Read camera child detection, at websocket local:1122&lt;br&gt;→ publish CameraInput.ChildDetectedByCamera" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="dms-box" vertex="1">
+                    <mxGeometry x="20" y="40" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="dms-in" value="camera child detection (ws://localhost:1122)" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="309.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="309.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="dms-out" value="CameraInput.ChildDetectedByCamera" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" source="dms-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="309.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="airbag-box" value="AirbagControlUnit" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="p2-1" vertex="1">
+                    <mxGeometry x="520" y="420" width="360" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="airbag-f1" value="Function 1: Provide Airbag Status&#xa;→ publish AirbagStatus" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="airbag-box" vertex="1">
+                    <mxGeometry x="20" y="40" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="airbag-f2" value="Function 2: Apply Airbag Control Command&#xa;← receive AirbagControlCommand&#xa;→ AirbagActuatorState.AirbagActuated (local)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="airbag-box" vertex="1">
+                    <mxGeometry x="20" y="140" width="320" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="airbag-in1" value="AirbagStatusSensor.AirbagStatus" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="499.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="499.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="airbag-out1" value="AirbagStatusReport.AirbagStatus" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1.003;exitY=0.319;exitDx=0;exitDy=0;exitPerimeter=0;" parent="p2-1" source="airbag-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="503" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="airbag-in2" value="AirbagControlCommand.AirbagControlCommand" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="609.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="609.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-box" value="CentralHPC" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="p2-1" vertex="1">
+                    <mxGeometry x="520" y="720" width="360" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="central-f1" value="Function 1: Stateful Fusion&#xa;SeatInput.SeatOccupied AND CameraInput.ChildDetectedByCamera&#xa;→ ChildAlert.ChildAlertActive&#xa;(two-frame AND, not one)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="central-box" vertex="1">
+                    <mxGeometry x="20" y="40" width="320" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="central-f2" value="Function 2: Driver Decision Processing&#xa;IF DriverDecision == TurnAirbagOff&#xa;→ generate AirbagControlCommand" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="central-box" vertex="1">
+                    <mxGeometry x="20" y="160" width="320" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="central-in1" value="SeatInput.SeatOccupied" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="779.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="779.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-in2" value="CameraInput.ChildDetectedByCamera" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="809.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="809.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-in3" value="AirbagStatusReport.AirbagStatus" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="839.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="839.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-in4" value="DriverDecision.TurnAirbagOff" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="930" as="sourcePoint"/>
+                        <mxPoint x="520" y="930" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-out1" value="ChildAlert.ChildAlertActive" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" parent="p2-1" source="central-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="790" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="central-out2" value="AirbagControlCommand.AirbagControlCommand" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;dashed=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" parent="p2-1" source="central-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="930" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cockpit-box" value="CockpitHMIECU" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;align=center;" parent="p2-1" vertex="1">
+                    <mxGeometry x="520" y="1040" width="360" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="cockpit-f1" value="Function 1: Display Child Warning&#xa;← receive ChildAlert&#xa;→ show warning on HMI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="cockpit-box" vertex="1">
+                    <mxGeometry x="20" y="40" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="cockpit-f2" value="Function 2: Capture Driver Decision&#xa;← receive driver action (Keep ON / Turn OFF)&#xa;→ publish DriverDecision" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#000000;fontSize=11;verticalAlign=middle;align=center;" parent="cockpit-box" vertex="1">
+                    <mxGeometry x="20" y="140" width="320" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="cockpit-in1" value="ChildAlert.ChildAlertActive" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="1119.5" as="sourcePoint"/>
+                        <mxPoint x="520" y="1119.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cockpit-in2" value="HmiDriverAction.TurnAirbagOff" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="p2-1" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="320" y="1230" as="sourcePoint"/>
+                        <mxPoint x="520" y="1230" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cockpit-out1" value="HmiChildWarning.ChildAlertActive" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.308;exitDx=0;exitDy=0;exitPerimeter=0;" parent="p2-1" source="cockpit-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="1119.5" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cockpit-out2" value="DriverDecision.TurnAirbagOff" style="endArrow=block;html=1;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" parent="p2-1" source="cockpit-box" edge="1">
+                    <mxGeometry x="0.1" y="-20" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="1080" y="1235" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

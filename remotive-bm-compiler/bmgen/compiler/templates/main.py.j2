@@ -17,10 +17,6 @@ import websockets
 
 {% if has_state %}
 class {{ model_name }}:
-{% else %}
-@dataclass
-class {{ model_name }}:
-{% endif %}
 {% for ns in output_namespaces %}
     {{ ns.python_var_name }}: CanNamespace
 {% endfor %}
@@ -36,6 +32,35 @@ class {{ model_name }}:
 {% for ws in websocket_listeners %}
     {{ ws.ws_task_var_name }}: asyncio.Task | None = None
 {% endfor %}
+
+    def __init__(
+        self,
+{% for ns in output_namespaces %}
+        {{ ns.python_var_name }}: CanNamespace,
+{% endfor %}
+    ) -> None:
+{% for ns in output_namespaces %}
+        self.{{ ns.python_var_name }} = {{ ns.python_var_name }}
+{% endfor %}
+{% else %}
+@dataclass
+class {{ model_name }}:
+{% for ns in output_namespaces %}
+    {{ ns.python_var_name }}: CanNamespace
+{% endfor %}
+{% for state in states %}
+    {{ state.private_var }}: {{ state.type }} = {{ state.initial }}
+{% endfor %}
+{% for prev_state in previous_states %}
+    {{ prev_state.var_name }}: int = 0
+{% endfor %}
+{% for ticker in tickers %}
+    {{ ticker.var_name }}: asyncio.Task | None = None
+{% endfor %}
+{% for ws in websocket_listeners %}
+    {{ ws.ws_task_var_name }}: asyncio.Task | None = None
+{% endfor %}
+{% endif %}
 
 {% for hb in handler_bodies %}
 {{ hb.body }}

@@ -1,0 +1,23 @@
+model:
+  name: SeatECU
+  ecu_name: SEAT
+
+namespace_types:       
+  SEAT-CpdCan0: can
+  SEAT-CpdCan1: can
+
+handlers:
+  - name: on_seat_occupancy
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: ">="
+    true_when: below
+    input:
+      namespace: SEAT-CpdCan0
+      frame_filter: SeatWeightSensor
+      signal: SeatWeightSensor.WeightKg
+    output:                   
+      - namespace: SEAT-CpdCan0
+        signals: [SeatInput.SeatOccupied]
+      - namespace: SEAT-CpdCan1
+        signals: [SeatInput.SeatOccupiedBackup]

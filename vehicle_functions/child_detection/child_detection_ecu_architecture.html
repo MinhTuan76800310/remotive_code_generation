@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Child Presence Detection — ECU Function &amp; CAN Signal I/O Analysis</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Aptos:wght@400;600;700&display=swap');
+  :root {
+    --parchment: #f5f0e8;
+    --parchment-dark: #e8dcc8;
+    --teal: #2a9d8f;
+    --teal-light: #d4f0ec;
+    --amber: #e9c46a;
+    --amber-dark: #c49a3c;
+    --red: #e76f51;
+    --red-light: #fde8e0;
+    --ink: #2d2d2d;
+    --ink-light: #555;
+    --card-bg: rgba(245,240,232,0.92);
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Aptos', 'Segoe UI', system-ui, sans-serif;
+    background: var(--parchment);
+    color: var(--ink);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: auto;
+  }
+  h1, h2, h3 { font-family: 'Aptos', Georgia, serif; }
+  h1 { font-size: 2.2rem; color: var(--teal); margin-bottom: 0.5rem; letter-spacing: -0.5px; }
+  h2 { font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem; border-bottom: 2px solid var(--amber); padding-bottom: 0.3rem; }
+  h3 { font-size: 1.15rem; color: var(--teal); margin: 1.5rem 0 0.75rem; }
+  .subtitle { font-size: 1rem; color: var(--ink-light); margin-bottom: 2rem; }
+  .pill-toc { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 2rem; }
+  .pill-toc a {
+    display: inline-block; padding: 0.35rem 0.85rem; border-radius: 20px;
+    background: var(--teal-light); color: var(--teal); text-decoration: none;
+    font-size: 0.85rem; font-weight: 600; transition: background 0.2s;
+  }
+  .pill-toc a:hover { background: var(--teal); color: #fff; }
+
+  .card {
+    background: var(--card-bg); border-radius: 12px; padding: 1.5rem;
+    margin-bottom: 1.5rem; box-shadow: var(--shadow);
+    border-left: 4px solid var(--teal);
+  }
+  .card.amber { border-left-color: var(--amber-dark); }
+  .card.red { border-left-color: var(--red); }
+
+  .metric-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .metric-card {
+    background: var(--card-bg); border-radius: 12px; padding: 1rem 1.5rem;
+    box-shadow: var(--shadow); flex: 1 1 180px; text-align: center;
+  }
+  .metric-card .value { font-size: 2rem; font-weight: 700; color: var(--teal); }
+  .metric-card .label { font-size: 0.85rem; color: var(--ink-light); margin-top: 0.3rem; }
+
+  .badge {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 600; margin-right: 0.3rem;
+  }
+  .badge.teal { background: var(--teal-light); color: var(--teal); }
+  .badge.amber { background: var(--amber); color: #fff; }
+  .badge.red { background: var(--red-light); color: var(--red); }
+  .badge.input { background: #d4f0ec; color: #2a9d8f; }
+  .badge.output { background: var(--amber); color: #fff; }
+  .badge.func { background: #e0e0e0; color: #2d2d2d; }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th { background: var(--parchment-dark); text-align: left; padding: 0.6rem 0.8rem; font-weight: 600; }
+  td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--parchment-dark); }
+  tr:hover td { background: var(--teal-light); }
+
+  .evidence {
+    font-size: 0.8rem; color: var(--ink-light); margin-top: 0.5rem;
+    padding-left: 1rem; border-left: 2px solid var(--amber);
+  }
+  .evidence strong { color: var(--amber-dark); }
+
+  .artifact-id {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.82rem; background: var(--parchment-dark);
+    padding: 0.1rem 0.4rem; border-radius: 4px; color: var(--ink);
+  }
+
+  .signal-box {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.25rem 0.6rem; border-radius: 6px; margin: 0.2rem;
+    font-size: 0.85rem; font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+  .signal-box.input { background: #d4f0ec; border: 1px solid #2a9d8f; color: #1a7d6f; }
+  .signal-box.output { background: #fef3c7; border: 1px solid #c49a3c; color: #92400e; }
+  .signal-box.func { background: #f5f5f5; border: 1px solid #888; color: #2d2d2d; }
+  .signal-box .arrow { font-weight: 700; }
+
+  .ecu-viz {
+    background: var(--card-bg); border-radius: 16px; padding: 1.5rem;
+    box-shadow: var(--shadow); margin-bottom: 2rem;
+    border-top: 6px solid;
+  }
+  .ecu-viz.seat { border-top-color: var(--teal); }
+  .ecu-viz.cam { border-top-color: #3b82f6; }
+  .ecu-viz.zone { border-top-color: var(--amber-dark); }
+  .ecu-viz.central { border-top-color: #6366f1; }
+  .ecu-viz.cockpit { border-top-color: #8b5cf6; }
+  .ecu-viz.airbag { border-top-color: var(--red); }
+
+  .ecu-viz h3 { margin-bottom: 0.5rem; }
+
+  .signal-flow {
+    display: flex; gap: 1rem; align-items: stretch; min-height: 200px;
+  }
+  .signal-col {
+    flex: 0 0 160px; display: flex; flex-direction: column; gap: 0.4rem;
+  }
+  .signal-col.wide { flex: 0 0 200px; }
+  .func-col {
+    flex: 1; display: flex; flex-direction: column; gap: 0.4rem;
+    align-items: center; justify-content: center;
+  }
+  .signal-item {
+    padding: 0.5rem 0.7rem; border-radius: 8px; font-size: 0.85rem;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+  .signal-item.input { background: #d4f0ec; border-left: 3px solid #2a9d8f; }
+  .signal-item.output { background: #fef3c7; border-left: 3px solid #c49a3c; }
+  .func-item {
+    padding: 0.6rem 1rem; border-radius: 8px; font-size: 0.9rem;
+    background: #f5f5f5; border: 1px solid #ddd; text-align: center;
+    font-weight: 600;
+  }
+  .bus-label {
+    font-size: 0.75rem; color: var(--ink-light); font-weight: 600;
+    text-align: center; margin-top: 0.3rem;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+
+  .flow-arrow {
+    font-size: 1.5rem; color: var(--ink-light); display: flex;
+    align-items: center; justify-content: center; flex: 0 0 30px;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 1rem; }
+    h1 { font-size: 1.6rem; }
+    .metric-row { flex-direction: column; }
+    .signal-flow { flex-direction: column; }
+    .signal-col { flex: 1 1 auto; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Child Presence Detection — ECU Function &amp; CAN Signal I/O</h1>
+<p class="subtitle">
+  Zonal SDV architecture: 6 ECUs, their functions, and exact CAN signal input/output boundaries<br>
+  Sources: BPMN <span class="artifact-id">Child_Presence_Detection_ver1.2.bpmn</span>,
+  Spec <span class="artifact-id">CHILD-SPEC-001</span>,
+  Software <span class="artifact-id">CHILD-SCD-001</span>,
+  Requirements <span class="artifact-id">SYS-REQ-001</span>
+</p>
+
+<div class="pill-toc">
+  <a href="#summary">Summary</a>
+  <a href="#subecu-seat">SubECU-Seat</a>
+  <a href="#cam-ecu">CAM-ECU</a>
+  <a href="#zonal-ecu">Zonal ECU</a>
+  <a href="#central">Central Computer</a>
+  <a href="#cockpit">COCKPIT-ECU</a>
+  <a href="#airbag">Airbag-ECU</a>
+  <a href="#bpmn-flow">BPMN Flow</a>
+  <a href="#bus-map">Bus Map</a>
+  <a href="#evidence">Evidence</a>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="summary">Summary — 6 ECUs, 3 CAN FD Buses</h2>
+
+<div class="metric-row">
+  <div class="metric-card"><div class="value">6</div><div class="label">ECUs</div></div>
+  <div class="metric-card"><div class="value">3</div><div class="label">CAN FD buses</div></div>
+  <div class="metric-card"><div class="value">7</div><div class="label">BPMN message events</div></div>
+  <div class="metric-card"><div class="value">14</div><div class="label">SW components</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="subecu-seat">1. SubECU-Seat — Seat Sensor Acquisition &amp; Preprocessing</h2>
+
+<div class="ecu-viz seat">
+  <h3 style="color:#2a9d8f">SubECU-Seat</h3>
+  <p style="color:#555; font-size:0.9rem;">Acquires seat weight &amp; ISOFIX sensor data locally. Validates availability, preprocesses &amp; normalizes. Transmits normalized seat-related CPD data to Zonal ECU.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">BUS-ISOFIX-Local / BUS-Weight-Local</div>
+      <div class="signal-item input">SeatWeightSensor.WeightValue</div>
+      <div class="signal-item input">SeatWeightSensor.SensorAvailability</div>
+      <div class="signal-item input">ISOFIXSensor.ISOFIXStatus</div>
+      <div class="bus-label">Protocol: Local sensor interface</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>Sensors Acquisition</strong><br><span style="font-size:0.8rem;color:#555;">Acquire seat weight + ISOFIX inputs; validate sensor availability &amp; signal status</span></div>
+      <div class="func-item"><strong>Sensors Preprocessing</strong><br><span style="font-size:0.8rem;color:#555;">Preprocess sensor data; normalize CPD inputs; prepare for CAN FD transmission</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">BUS-SEAT-CANFD</div>
+      <div class="signal-item output">NormalizedSensorsMessageThrow<br>(CPDSeatData.SeatWeightValue)</div>
+      <div class="signal-item output">NormalizedSensorsMessageThrow<br>(CPDSeatData.ISOFIXStatus)</div>
+      <div class="signal-item output">NormalizedSensorsMessageThrow<br>(CPDSeatData.SeatSensorAvailability)</div>
+      <div class="bus-label">→ Zonal ECU</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Activity_1up02m6</span> Sensors Acquisition → <span class="artifact-id">Activity_0hdodh4</span> Sensors Preprocessing → <span class="artifact-id">Event_1vetijz</span> NormalizedSensorsMessageThrow → Zonal ECU<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §SubECU-Seat — Sensors Acquisition Component + Sensors Preprocessing Component<br>
+    <strong>Comm:</strong> CHILD-SPEC-001 §Communication Allocation — "SubECU-Seat <-> Zonal ECU: CAN FD"
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="cam-ecu">2. CAM-ECU — Camera Image Acquisition &amp; Preprocessing</h2>
+
+<div class="ecu-viz cam">
+  <h3 style="color:#3b82f6">CAM-ECU</h3>
+  <p style="color:#555; font-size:0.9rem;">Acquires passenger monitoring camera image data. Preprocesses image data for CAN FD transmission to Zonal ECU.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">PassengerCamera-Local</div>
+      <div class="signal-item input">PassengerCamera.ImageData</div>
+      <div class="signal-item input">PassengerCamera.CameraAvailability</div>
+      <div class="bus-label">Protocol: Automotive camera interface</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>Camera Data Acquisition</strong><br><span style="font-size:0.8rem;color:#555;">Acquire image data from passenger monitoring camera</span></div>
+      <div class="func-item"><strong>Camera Data Preprocessing</strong><br><span style="font-size:0.8rem;color:#555;">Preprocess image data; prepare for CAN FD transmission to Zonal ECU</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">BUS-SEAT-CANFD</div>
+      <div class="signal-item output">NormalizedImageThrow<br>(CPDCameraData.PreprocessedImageData)</div>
+      <div class="signal-item output">NormalizedImageThrow<br>(CPDCameraData.CameraAvailability)</div>
+      <div class="bus-label">→ Zonal ECU</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Activity_0fb5d5v</span> Camera Data Acquisition → <span class="artifact-id">Activity_0n5f5nx</span> Camera Data Preprocessing → <span class="artifact-id">Event_1qby1fh</span> NormalizedImageThrow → Zonal ECU<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §CAM-ECU — Camera Data Acquisition Component + Camera Data Preprocessing Component<br>
+    <strong>Comm:</strong> CHILD-SPEC-001 §Communication Allocation — "CAM-ECU <-> Zonal ECU: CAN FD"
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="zonal-ecu">3. Zonal ECU — Zonal Hub: Fuse + Route + Airbag Interface</h2>
+
+<div class="ecu-viz zone">
+  <h3 style="color:#c49a3c">Zonal ECU</h3>
+  <p style="color:#555; font-size:0.9rem;">Receives seat + camera data from SubECU-Seat &amp; CAM-ECU. Fuses into zonal CPD input set. Routes to Central Computer via BUS-ZONE-CANFD. Routes airbag control decisions to Airbag-ECU via BUS-SEAT-CANFD.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col wide">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">BUS-SEAT-CANFD (from SubECU-Seat &amp; CAM-ECU)</div>
+      <div class="signal-item input">NormalizedSensorsMessageCatch<br>(CPDSeatData.SeatWeightValue)</div>
+      <div class="signal-item input">NormalizedSensorsMessageCatch<br>(CPDSeatData.ISOFIXStatus)</div>
+      <div class="signal-item input">NormalizedImageCatch<br>(CPDCameraData.PreprocessedImageData)</div>
+      <div class="signal-item input">NormalizedImageCatch<br>(CPDCameraData.CameraAvailability)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">BUS-ZONE-CANFD (from Central Computer)</div>
+      <div class="signal-item input">CPDAirbagDecision.AirbagControlDecision</div>
+      <div class="signal-item input">CPDAirbagDecision.DeactivationActive</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>Sensors Fusion</strong><br><span style="font-size:0.8rem;color:#555;">Combine seat + camera CPD data into fused zonal CPD input set</span></div>
+      <div class="func-item"><strong>Zone Data Routing</strong><br><span style="font-size:0.8rem;color:#555;">Forward fused data to Central Computer; route airbag control to Airbag-ECU</span></div>
+      <div class="func-item"><strong>Airbag Interface Communication</strong><br><span style="font-size:0.8rem;color:#555;">Exchange CPD airbag control information with Airbag-ECU</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col wide">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">BUS-ZONE-CANFD → Central Computer</div>
+      <div class="signal-item output">NormalizedDataThrow<br>(CPDZoneInput.SeatWeightValue)</div>
+      <div class="signal-item output">NormalizedDataThrow<br>(CPDZoneInput.ISOFIXStatus)</div>
+      <div class="signal-item output">NormalizedDataThrow<br>(CPDZoneInput.PreprocessedImageData)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">BUS-SEAT-CANFD → Airbag-ECU</div>
+      <div class="signal-item output">TurnOffAirbagControlThrow<br>(CPDAirbagControl.AirbagControlDecision)</div>
+      <div class="signal-item output">TurnOffAirbagControlThrow<br>(CPDAirbagControl.DeactivationActive)</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Event_0iufyuo</span> NormalizedDataCatch → <span class="artifact-id">Activity_1v2kgjd</span> Sensors Fusion → <span class="artifact-id">Activity_0638zh1</span> Zone Data Routing → <span class="artifact-id">Event_15qugek</span> NormalizedDataThrow (split to Central Computer). <span class="artifact-id">Event_16zm9y9</span> TurnOffAirbagRequestCatch → <span class="artifact-id">Activity_0atjgmc</span> Zone Data Routing → <span class="artifact-id">Event_0dpoz3o</span> TurnOffAirbagControlThrow → Airbag-ECU<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §Zonal ECU — 3 SW components (Sensors Fusion, Zone Data Routing, Airbag Interface Communication)<br>
+    <strong>Comm:</strong> CHILD-SPEC-001 §CPD Communication Buses — BUS-SEAT-CANFD (SubECU-Seat, CAM-ECU, Zonal ECU, Airbag-ECU), BUS-ZONE-CANFD (Zonal ECU, Central Computer)
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="central">4. Central Computer — AI Perception + CPD Fusion + Decision + Confirmation</h2>
+
+<div class="ecu-viz central">
+  <h3 style="color:#6366f1">Central Computer</h3>
+  <p style="color:#555; font-size:0.9rem;">Main CPD logic ECU. Receives fused zonal CPD data from Zonal ECU. Runs AI camera perception, fuses seat + camera results into child presence status, evaluates decision, handles driver confirmation. Sends child detection status + confirmation request to COCKPIT-ECU. Sends airbag decision to Zonal ECU.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col wide">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">BUS-ZONE-CANFD (from Zonal ECU)</div>
+      <div class="signal-item input">NormalizedImageCatch<br>(CPDZoneInput.PreprocessedImageData)</div>
+      <div class="signal-item input">NormalizedSensorsMessageCatch<br>(CPDZoneInput.SeatWeightValue)</div>
+      <div class="signal-item input">NormalizedSensorsMessageCatch<br>(CPDZoneInput.ISOFIXStatus)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">BUS-COCKPIT-CANFD (from COCKPIT-ECU)</div>
+      <div class="signal-item input">DriverDecisionCatch<br>(DriverConfirmation.DriverConfirmedDeactivation)</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>Camera AI Perception</strong><br><span style="font-size:0.8rem;color:#555;">AI-based child detection from camera image input</span></div>
+      <div class="func-item"><strong>CPD Fusion Logic</strong><br><span style="font-size:0.8rem;color:#555;">Evaluate seat data + camera result → determine child presence status</span></div>
+      <div class="func-item"><strong>CPD Decision Logic</strong><br><span style="font-size:0.8rem;color:#555;">Evaluate deactivation path; determine if driver confirmation required; generate airbag decision; send status to COCKPIT-ECU</span></div>
+      <div class="func-item"><strong>Confirmation Handling</strong><br><span style="font-size:0.8rem;color:#555;">Process driver confirmation from COCKPIT-ECU; finalize airbag decision → send to Zonal ECU</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col wide">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">BUS-COCKPIT-CANFD → COCKPIT-ECU</div>
+      <div class="signal-item output">ChildDetectedThrow<br>(CPDChildDetection.ChildPresenceStatus)</div>
+      <div class="signal-item output">ChildDetectedThrow<br>(CPDChildDetection.ConfirmationRequest)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">BUS-ZONE-CANFD → Zonal ECU</div>
+      <div class="signal-item output">TurnOffAirbagRequestCatch<br>(CPDAirbagDecision.AirbagControlDecision)</div>
+      <div class="signal-item output">TurnOffAirbagRequestCatch<br>(CPDAirbagDecision.DeactivationActive)</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Event_19ka6s6</span> NormalizedImageCatch → <span class="artifact-id">Activity_025dbat</span> Camera AI Perception → <span class="artifact-id">Activity_11c3t34</span> CPD Fusion Logic → <span class="artifact-id">Activity_1ai816s</span> CPD Decision Logic → <span class="artifact-id">Gateway_1abg3si</span> EvaluateChildPresence (exclusive: Not Child end OR ChildDetectedThrow to COCKPIT-ECU). <span class="artifact-id">Event_189vcls</span> DriverDecisionCatch → <span class="artifact-id">Activity_121r7vk</span> Confirmation Handling → <span class="artifact-id">Gateway_18k946i</span> Evaluate Driver Decision (exclusive: "Driver do not want" end OR TurnOffAirbagRequestCatch to Zonal ECU)<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §Central Computer — 4 SW components<br>
+    <strong>Comm:</strong> CHILD-SPEC-001 §CPD Communication Buses — BUS-ZONE-CANFD, BUS-COCKPIT-CANFD
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="cockpit">5. COCKPIT-ECU — HMI Gateway for Driver Confirmation</h2>
+
+<div class="ecu-viz cockpit">
+  <h3 style="color:#8b5cf6">COCKPIT-ECU</h3>
+  <p style="color:#555; font-size:0.9rem;">Bridges CAN FD (BUS-COCKPIT-CANFD) to Automotive Ethernet (HMI). Receives child detection status + confirmation request from Central Computer, forwards to touch-screen HMI. Returns driver confirmation back to Central Computer.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">BUS-COCKPIT-CANFD (from Central Computer)</div>
+      <div class="signal-item input">ChildDetectedCatch<br>(CPDChildDetection.ChildPresenceStatus)</div>
+      <div class="signal-item input">ChildDetectedCatch<br>(CPDChildDetection.ConfirmationRequest)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">Ethernet (from HMI)</div>
+      <div class="signal-item input">HmiDriverInput.DriverConfirmedDeactivation</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>CPD Child Alert: Await Driver Decision</strong><br><span style="font-size:0.8rem;color:#555;">Receive CPD status + confirmation request from Central Computer; forward to driver via HMI</span></div>
+      <div class="func-item"><strong>Confirmation Response Communication</strong><br><span style="font-size:0.8rem;color:#555;">Receive driver confirmation from HMI; return confirmation info to Central Computer</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">Ethernet → HMI</div>
+      <div class="signal-item output">DisplayAlertThrow<br>(HmiCpdDisplay.ChildPresenceStatus)</div>
+      <div class="signal-item output">DisplayAlertThrow<br>(HmiCpdDisplay.ConfirmationRequest)</div>
+      <div class="bus-label" style="margin-top:0.5rem;">BUS-COCKPIT-CANFD → Central Computer</div>
+      <div class="signal-item output">DriverDecisionThrow<br>(DriverConfirmation.DriverConfirmedDeactivation)</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Event_0zye75p</span> ChildDetectedCatch → <span class="artifact-id">Activity_04pmwk3</span> CPD Child Alert: Await driver decision → <span class="artifact-id">Event_1le5e2a</span> DisplayAlertThrow → Driver. <span class="artifact-id">Activity_1b724kh</span> Driver make the decision → <span class="artifact-id">Activity_0fppzl5</span> Confirmation Response Communication → <span class="artifact-id">Event_0xt4e4f</span> DriverDecisionThrow → Central Computer<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §COCKPIT-ECU — 2 SW components<br>
+    <strong>Comm:</strong> SYS-REQ-001 §Interface Requirements — "Ethernet shall be used for communication between the cockpit ECU and the touch-screen HMI"
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="airbag">6. Airbag-ECU — Final Restraint Control</h2>
+
+<div class="ecu-viz airbag">
+  <h3 style="color:#e76f51">Airbag-ECU</h3>
+  <p style="color:#555; font-size:0.9rem;">Final airbag control endpoint. Receives CPD-related airbag control information from Zonal ECU. Applies received information to internal restraint control logic.</p>
+
+  <div class="signal-flow">
+    <!-- INPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#2a9d8f; text-align:center;">CAN SIGNAL INPUT</div>
+      <div class="bus-label">BUS-SEAT-CANFD (from Zonal ECU)</div>
+      <div class="signal-item input">TurnOffAirbagControlCatch<br>(CPDAirbagControl.AirbagControlDecision)</div>
+      <div class="signal-item input">TurnOffAirbagControlCatch<br>(CPDAirbagControl.DeactivationActive)</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- FUNCTION -->
+    <div class="func-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#555; text-align:center;">FUNCTIONS</div>
+      <div class="func-item"><strong>CPD Turn Off Airbag</strong><br><span style="font-size:0.8rem;color:#555;">Receive CPD airbag control info from Zonal ECU; apply to internal restraint control logic</span></div>
+      <div class="func-item" style="background:#fde8e0; border-color:#e76f51;"><strong>Internal Restraint Control Logic</strong><br><span style="font-size:0.8rem;color:#555;">Bosch proprietary — not modeled externally</span></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <!-- OUTPUT -->
+    <div class="signal-col">
+      <div style="font-weight:700; font-size:0.8rem; color:#c49a3c; text-align:center;">CAN SIGNAL OUTPUT</div>
+      <div class="bus-label">BUS-SEAT-CANFD → Zonal ECU (ack)</div>
+      <div class="signal-item output">AirbagInterfaceStatus.PassengerAirbagDeactivationStatus</div>
+      <div class="signal-item output">AirbagInterfaceStatus.DeactivationActiveAck</div>
+    </div>
+  </div>
+
+  <div class="evidence">
+    <strong>BPMN:</strong> <span class="artifact-id">Event_0qj2x7n</span> TurrOffAirbagControlCatch → <span class="artifact-id">Activity_0hx3kth</span> CPD Turn Off Airbag → <span class="artifact-id">Event_0zxvf3g</span> End CPD<br>
+    <strong>Spec:</strong> CHILD-SCD-001 §Airbag-ECU — CPD Turn Off Airbag Component<br>
+    <strong>Comm:</strong> CHILD-SPEC-001 §Fixed ECU Allocation — "Bosch Airbag-ECU, based on Bosch AB premium airbag control unit family"
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="bpmn-flow">BPMN Message Flow Summary</h2>
+
+<div class="card">
+  <p>The BPMN process defines the exact message-passing sequence. Here is every inter-ECU message event:</p>
+
+  <table>
+    <thead><tr><th>BPMN Message Event</th><th>Type</th><th>From ECU</th><th>To ECU</th><th>Bus</th><th>Signal Content</th></tr></thead>
+    <tbody>
+      <tr><td><span class="artifact-id">Event_1vetijz</span> NormalizedSensorsMessageThrow</td><td>Throw</td><td>SubECU-Seat</td><td>Zonal ECU</td><td>BUS-SEAT-CANFD</td><td>Normalized seat weight + ISOFIX data</td></tr>
+      <tr><td><span class="artifact-id">Event_1qby1fh</span> NormalizedImageThrow</td><td>Throw</td><td>CAM-ECU</td><td>Zonal ECU</td><td>BUS-SEAT-CANFD</td><td>Preprocessed camera image data</td></tr>
+      <tr><td><span class="artifact-id">Event_15qugek</span> NormalizedDataThrow</td><td>Throw</td><td>Zonal ECU</td><td>Central Computer</td><td>BUS-ZONE-CANFD</td><td>Fused zonal CPD input set (parallel split: image + sensors)</td></tr>
+      <tr><td><span class="artifact-id">Event_1abg3si</span> EvaluateChildPresence → <span class="artifact-id">Event_0zye75p</span> ChildDetectedCatch</td><td>Throw→Catch</td><td>Central Computer</td><td>COCKPIT-ECU</td><td>BUS-COCKPIT-CANFD</td><td>Child presence status + confirmation request</td></tr>
+      <tr><td><span class="artifact-id">Event_1le5e2a</span> DisplayAlertThrow</td><td>Throw</td><td>COCKPIT-ECU</td><td>Driver (HMI)</td><td>Automotive Ethernet</td><td>Child detection alert + confirmation UI</td></tr>
+      <tr><td><span class="artifact-id">Event_0xt4e4f</span> DriverDecisionThrow → <span class="artifact-id">Event_189vcls</span> DriverDecisionCatch</td><td>Throw→Catch</td><td>COCKPIT-ECU</td><td>Central Computer</td><td>BUS-COCKPIT-CANFD</td><td>Driver confirmation response</td></tr>
+      <tr><td><span class="artifact-id">Event_16zm9y9</span> TurnOffAirbagRequestCatch</td><td>Catch</td><td>Central Computer</td><td>Zonal ECU</td><td>BUS-ZONE-CANFD</td><td>Airbag deactivation request</td></tr>
+      <tr><td><span class="artifact-id">Event_0dpoz3o</span> TurnOffAirbagControlThrow → <span class="artifact-id">Event_0qj2x7n</span> TurrOffAirbagControlCatch</td><td>Throw→Catch</td><td>Zonal ECU</td><td>Airbag-ECU</td><td>BUS-SEAT-CANFD</td><td>Airbag control decision</td></tr>
+    </tbody>
+  </table>
+
+  <div class="evidence"><strong>Evidence:</strong> BPMN file <span class="artifact-id">Child_Presence_Detection_ver1.2.bpmn</span> — all message event IDs, names, and sequence flows extracted from XML.</div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="bus-map">CAN Bus &amp; ECU Connection Map</h2>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Bus</th><th>Protocol</th><th>ECUs on Bus</th><th>Signals Carried</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="artifact-id">BUS-SEAT-CANFD</span></td>
+        <td>CAN FD</td>
+        <td>SubECU-Seat, CAM-ECU, Zonal ECU, Airbag-ECU</td>
+        <td>Normalized seat data (up), normalized camera data (up), airbag control decision (down)</td>
+      </tr>
+      <tr>
+        <td><span class="artifact-id">BUS-ZONE-CANFD</span></td>
+        <td>CAN FD</td>
+        <td>Zonal ECU, Central Computer</td>
+        <td>Fused CPD data (up), airbag decision + driver confirmation result (down)</td>
+      </tr>
+      <tr>
+        <td><span class="artifact-id">BUS-COCKPIT-CANFD</span></td>
+        <td>CAN FD</td>
+        <td>Central Computer, COCKPIT-ECU</td>
+        <td>Child detection status + confirmation request (out), driver confirmation response (in)</td>
+      </tr>
+      <tr>
+        <td><span class="artifact-id">COCKPIT-HMI-ETH</span></td>
+        <td>Automotive Ethernet</td>
+        <td>COCKPIT-ECU, Touch-screen HMI</td>
+        <td>Driver UI display + confirmation input</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="evidence"><strong>Evidence:</strong> CHILD-SPEC-001 §CPD Communication Buses — BUS-SEAT-CANFD, BUS-ZONE-CANFD, BUS-COCKPIT-CANFD names, protocols, connected nodes, and purposes.</div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 id="evidence">Full Evidence Index</h2>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Claim</th><th>Source</th><th>Section / Element</th><th>Artifact ID</th></tr></thead>
+    <tbody>
+      <tr><td>6 ECUs with specific functions</td><td>CHILD-SCD-001</td><td>§ECU and Software Component Allocation</td><td><span class="artifact-id">CHILD-SCD-001</span></td></tr>
+      <tr><td>SubECU-Seat input/output signals</td><td>BPMN</td><td>Activity_1up02m6, Activity_0hdodh4, Event_1vetijz</td><td><span class="artifact-id">BPMN</span></td></tr>
+      <tr><td>CAM-ECU input/output signals</td><td>BPMN</td><td>Activity_0fb5d5v, Activity_0n5f5nx, Event_1qby1fh</td><td><span class="artifact-id">BPMN</span></td></tr>
+      <tr><td>Zonal ECU fusion + routing + airbag interface</td><td>BPMN + CHILD-SCD-001</td><td>Activity_1v2kgjd, Activity_0638zh1, Activity_0atjgmc</td><td><span class="artifact-id">BPMN</span> + <span class="artifact-id">CHILD-SCD-001</span></td></tr>
+      <tr><td>Central Computer 4 SW components</td><td>BPMN + CHILD-SCD-001</td><td>Activity_025dbat, Activity_11c3t34, Activity_1ai816s, Activity_121r7vk</td><td><span class="artifact-id">BPMN</span> + <span class="artifact-id">CHILD-SCD-001</span></td></tr>
+      <tr><td>EvaluateChildPresence exclusive gateway</td><td>BPMN</td><td>Gateway_1abg3si</td><td><span class="artifact-id">BPMN</span></td></tr>
+      <tr><td>EvaluateDriverDecision exclusive gateway</td><td>BPMN</td><td>Gateway_18k946i</td><td><span class="artifact-id">BPMN</span></td></tr>
+      <tr><td>COCKPIT-ECU HMI gateway</td><td>BPMN + CHILD-SCD-001</td><td>Activity_04pmwk3, Activity_0fppzl5, Event_1le5e2a, Event_0xt4e4f</td><td><span class="artifact-id">BPMN</span> + <span class="artifact-id">CHILD-SCD-001</span></td></tr>
+      <tr><td>Airbag-ECU receives control + applies restraint</td><td>BPMN + CHILD-SCD-001</td><td>Event_0qj2x7n, Activity_0hx3kth, Event_0zxvf3g</td><td><span class="artifact-id">BPMN</span> + <span class="artifact-id">CHILD-SCD-001</span></td></tr>
+      <tr><td>3 CAN FD buses defined</td><td>CHILD-SPEC-001</td><td>§CPD Communication Buses</td><td><span class="artifact-id">CHILD-SPEC-001</span></td></tr>
+      <tr><td>COCKPIT-ECU ↔ HMI uses Ethernet</td><td>SYS-REQ-001</td><td>§Interface Requirements</td><td><span class="artifact-id">SYS-REQ-001</span></td></tr>
+      <tr><td>100ms latency requirement</td><td>SYS-REQ-001</td><td>§Non-Functional Requirements</td><td><span class="artifact-id">SYS-REQ-001</span></td></tr>
+      <tr><td>98% detection accuracy</td><td>SYS-REQ-001</td><td>§Non-Functional Requirements</td><td><span class="artifact-id">SYS-REQ-001</span></td></tr>
+      <tr><td>No airbag deactivation without driver confirmation</td><td>SYS-REQ-001</td><td>§Safety Requirements</td><td><span class="artifact-id">SYS-REQ-001</span></td></tr>
+      <tr><td>3 vehicle variants</td><td>SYS-REQ-001</td><td>§Scope</td><td><span class="artifact-id">SYS-REQ-001</span></td></tr>
+      <tr><td>BPMN lane assignments match 6 ECUs + Driver</td><td>BPMN</td><td>Lane_1nrf2tf Driver, Lane_0be1f65 SubECU-Seat, Lane_1bpqbuy CAM-ECU, Lane_1sq38l1 Zonal ECU, Lane_02hl8hq Central Computer, Lane_1s37a1f COCKPIT-ECU, Lane_0wjy4eh Airbag ECU</td><td><span class="artifact-id">BPMN</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<footer style="text-align:center; padding:2rem 0; color:var(--ink-light); font-size:0.8rem;">
+  Sources: <span class="artifact-id">Child_Presence_Detection_ver1.2.bpmn</span> · <span class="artifact-id">CHILD-SPEC-001</span> · <span class="artifact-id">CHILD-SCD-001</span> · <span class="artifact-id">SYS-REQ-001</span> · 2026-06-18
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,47 @@
+# AirbagControlUnit — Provide Airbag Status / apply Airbag Control Command
+# Source diagram: CAD_ECU_architecture.drawio — node "airbag" (AirbagControlUnit)
+#   Function: "Provide Airbag Status"
+#   CAN out: AirbagStatus            → arrow a_abstatus → CentralHPC
+#   CAN in : AirbagControlCommand    ← arrow a_abcmd    ← CentralHPC (dashed actuator command)
+# Role: publish current airbag status to CentralHPC; receive the airbag control
+#       command from CentralHPC and apply it to the local restraint actuator.
+# Design: Simulation ECU — DirectSignalMapping for both directions.
+
+model:
+  name: AirbagControlUnit
+  ecu_name: AIRBAG
+
+namespaces:
+  # All CAN on the shared CpdCan0 channel.
+  # role: both — AIRBAG reads AirbagStatusSensor and AirbagControlCommand, and
+  # writes AirbagStatusReport and AirbagActuatorState, all on the same physical bus.
+  - name: AIRBAG-CpdCan0
+    type: can
+    role: both
+    restbus:
+      sender_filter: AIRBAG
+
+handlers:
+  # Local airbag status → publish AirbagStatusReport to CentralHPC
+  - name: on_provide_airbag_status
+    pattern: DirectSignalMapping
+    input:
+      namespace: AIRBAG-CpdCan0
+      frame_filter: AirbagStatusSensor
+      signal: AirbagStatusSensor.AirbagStatus
+    output:
+      namespace: AIRBAG-CpdCan0
+      signals:
+        - AirbagStatusReport.AirbagStatus
+
+  # AirbagControlCommand from CentralHPC → apply to local restraint actuator
+  - name: on_airbag_control_command
+    pattern: DirectSignalMapping
+    input:
+      namespace: AIRBAG-CpdCan0
+      frame_filter: AirbagControlCommand
+      signal: AirbagControlCommand.AirbagControlCommand
+    output:
+      namespace: AIRBAG-CpdCan0
+      signals:
+        - AirbagActuatorState.AirbagActuated

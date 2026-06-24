@@ -1,0 +1,56 @@
+
+# This file is a my explaination about yaml schema.
+#   - requirement level : mandatory | optional | conditional
+#   - why                : the reason the field exists
+#   - emits →            : the EXACT segment of generated __main__.py it produces
+#
+# Note:
+#   1. novel_logic: true is a special case. Generate a stub handler for you to fill in.
+#      The generator does NOT validate the body of a novel_logic handler.
+
+
+# ── model: định danh ECU ─────────────────────────────────────────────────────
+model:
+  name:            # mandatory — BehavioralModel name
+  ecu_name:        # mandatory — broker + SenderFilter name
+
+
+# ── namespaces: Namespaces used by ECU  ─────────────────────────────────────────
+namespaces:
+  - name:            # mandatory 
+    type: can        # optional, default can. enum: can|ethernet|lin
+    role: both       # mandatory, default input — input|output|both. 
+    restbus:         # mandatory for role output/both. Used for send cyclic messages.
+      sender_filter: # mandatory
+
+
+# ── handlers: callback when receive CAN frame ───────────────────────────────
+# If don't have a matching pattern --> set novel_logic: true -->generate a stub handler for you to fill in.
+handlers:
+  - name:            # mandatory, unique - callback function name
+    pattern: DirectSignalMapping  # mandatory. function logic. 
+    novel_logic: false  # optional, default false — true → generate stub and skip validation. If pattern is unknown, must set novel_logic: true to skip validation.
+    input:
+      namespace:     # mandatory — receive namespace
+      frame_filter:  # mandatory — Filter frame
+      signal:        # mandatory - signal name in frame_filter
+
+    output:
+      namespace:     # mandatory — send namespace
+      signals:       # mandatory - list of Frame.Signal to send
+        - Frame.Signal
+    threshold: 8     # mandatory cho ThresholdMapping. nếu thiếu: lỗi Invariant 11
+    operator: ">="   # optional, default ">" — ⚠ PHẢI quote (">="), viết trần >= lỗi YAML lúc parse
+    true_when: below # optional, default above — above|below (below = đảo: "child khi weight NHẸ")
+
+
+# ── websocket_listeners: sibling of handlers, callback when receive websocket message ───────────────
+websocket_listeners:
+  - name:            # mandatory
+    url: ws://localhost:1122  # mandatory
+    output_namespace:  # mandatory — send namespace
+    signal_map:      # mandatory - mapping WS signal to restbus signal
+      - ws_key: ChildDetected          # mandatory — key in JSON message
+        signal: CameraInput.ChildDetectedByCamera  # mandatory — "Frame.Signal" restbus signal
+    cleanup: true    # optional, default true 
+    reconnect_delay_sec: 2.0  # optional, default 2.0 

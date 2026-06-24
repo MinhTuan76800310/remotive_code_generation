@@ -33,21 +33,24 @@
 model:
   name: SeatECU
   ecu_name: SEAT
+# change:
+#       role --> I/O
 
 namespaces:
-  # Input: local seat weight sensor (on-board, not on the vehicle CAN).
-  # Carries a float KILOGRAMS value — NOT a pre-computed boolean.
-  - name: SEAT-LocalSensorCan0
+  # All CAN on the shared CpdCan0 channel.
+  # role: both — SEAT both receives SeatWeightSensor (local sensor) and
+  # transmits SeatInput (SeatOccupied) on the same physical bus.
+  - name: SEAT-CpdCan0
     type: can
-    role: input
-
-  # Output: SeatOccupied (boolean) onto the child-detection input bus toward CentralHPC
-  - name: SEAT-SeatCan0
-    type: can
-    role: output
+    role: both
     restbus:
       sender_filter: SEAT
-
+  - name: SEAT-CpdCan1
+    type: can
+    role: input
+    restbus:
+      sender_filter: SEAT
+      
 handlers:
   # Local seat weight (kg) → threshold rule → publish SeatOccupied (CAN signal a_seat).
   # Rule (author): seat_occupied = False if weight_kg >= 8 else True
@@ -58,10 +61,10 @@ handlers:
     operator: ">="
     true_when: below
     input:
-      namespace: SEAT-LocalSensorCan0
+      namespace: SEAT-CpdCan0
       frame_filter: SeatWeightSensor
       signal: SeatWeightSensor.WeightKg
     output:
-      namespace: SEAT-SeatCan0
+      namespace: SEAT-CpdCan0
       signals:
-        - ChildDetectionInput.SeatOccupied
+        - SeatInput.SeatOccupied

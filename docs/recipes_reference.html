@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bmgen Recipes — How to Use, How to Add, Example Use Cases</title>
+  <style>
+    :root {
+      --bg: #f5efe3;
+      --paper: #fffaf0;
+      --ink: #242018;
+      --muted: #6d6253;
+      --line: #d8c9ac;
+      --accent: #0f766e;
+      --accent-2: #b45309;
+      --danger: #b91c1c;
+      --warn: #ca8a04;
+      --good: #15803d;
+      --blue: #1d4ed8;
+      --purple: #7c3aed;
+      --shadow: 0 18px 60px rgba(52, 42, 25, 0.13);
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+      --sans: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
+      --serif: Georgia, "Times New Roman", serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(15, 118, 110, 0.12), transparent 32rem),
+        radial-gradient(circle at 92% 8%, rgba(180, 83, 9, 0.16), transparent 30rem),
+        linear-gradient(135deg, #f8f1df 0%, var(--bg) 45%, #ede3d1 100%);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.6;
+    }
+    .page { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 72px; }
+
+    header.hero {
+      position: relative; overflow: hidden;
+      border: 1px solid rgba(36, 32, 24, 0.12);
+      border-radius: 30px;
+      padding: clamp(28px, 5vw, 60px);
+      background:
+        linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 247, 230, 0.88)),
+        repeating-linear-gradient(45deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.08) 1px, transparent 1px, transparent 16px);
+      box-shadow: var(--shadow);
+    }
+    header.hero::after {
+      content: ""; position: absolute; right: -100px; top: -100px;
+      width: 310px; height: 310px; border-radius: 50%;
+      border: 46px solid rgba(180, 83, 9, 0.12);
+    }
+    .eyebrow {
+      display: inline-flex; gap: 8px; align-items: center;
+      padding: 6px 12px; border: 1px solid rgba(15, 118, 110, 0.25);
+      border-radius: 999px; color: var(--accent);
+      background: rgba(15, 118, 110, 0.06);
+      font-weight: 700; font-size: 0.85rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    h1 {
+      max-width: 860px; margin: 18px 0 14px;
+      font-family: var(--serif);
+      font-size: clamp(2.2rem, 5.5vw, 4.6rem);
+      line-height: 0.98; letter-spacing: -0.05em;
+    }
+    .hero p { max-width: 800px; font-size: clamp(1rem, 2vw, 1.22rem); color: var(--muted); }
+    .verdict { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 28px; }
+    .verdict-card { border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 20px; padding: 16px; background: rgba(255, 255, 255, 0.55); }
+    .verdict-card strong { display: block; font-size: 1rem; margin-bottom: 4px; }
+    .verdict-card span { color: var(--muted); font-size: 0.9rem; }
+    .verdict-card .big { font-family: var(--serif); font-size: 1.9rem; color: var(--accent); }
+
+    nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0; }
+    nav.toc a {
+      text-decoration: none; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 7px 12px; background: rgba(255, 250, 240, 0.75);
+      font-size: 0.92rem;
+    }
+    nav.toc a:hover { background: rgba(15, 118, 110, 0.08); }
+
+    section {
+      margin-top: 26px; border: 1px solid rgba(36, 32, 24, 0.12);
+      border-radius: 26px; padding: clamp(22px, 4vw, 36px);
+      background: rgba(255, 250, 240, 0.86);
+      box-shadow: 0 10px 32px rgba(52, 42, 25, 0.08);
+    }
+    h2 { margin: 0 0 16px; font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.6rem); line-height: 1.08; letter-spacing: -0.03em; }
+    h3 { margin: 22px 0 8px; font-size: 1.15rem; letter-spacing: -0.01em; }
+    h4 { margin: 16px 0 6px; font-size: 1.02rem; color: var(--accent); }
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+    code, pre { font-family: var(--mono); }
+    code {
+      border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 7px;
+      padding: 1px 5px; background: rgba(36, 32, 24, 0.05); font-size: 0.9em;
+    }
+    pre {
+      overflow-x: auto; border-radius: 18px;
+      border: 1px solid rgba(36, 32, 24, 0.13); padding: 18px;
+      background: #201b15; color: #fff7e6; line-height: 1.5; font-size: 0.86em;
+    }
+    pre code { border: 0; background: transparent; color: inherit; padding: 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 820px) { .grid, .grid-3, .verdict { grid-template-columns: 1fr; } }
+
+    .card { border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 20px; padding: 18px; background: rgba(255, 255, 255, 0.52); }
+    .card h3 { margin-top: 0; }
+    .metric { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; border-bottom: 1px solid rgba(36, 32, 24, 0.1); padding: 10px 0; }
+    .metric:last-child { border-bottom: 0; }
+    .metric b { font-size: 1.05rem; }
+    .metric span { color: var(--muted); font-family: var(--mono); font-size: 0.88em; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 999px; padding: 4px 9px;
+      font-size: 0.75rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .good { color: var(--good); background: rgba(21, 128, 61, 0.1); }
+    .warn { color: var(--warn); background: rgba(202, 138, 4, 0.13); }
+    .bad { color: var(--danger); background: rgba(185, 28, 28, 0.1); }
+    .info { color: var(--blue); background: rgba(29, 78, 216, 0.1); }
+    .teal { color: var(--accent); background: rgba(15, 118, 110, 0.1); }
+    .purp { color: var(--purple); background: rgba(124, 58, 237, 0.1); }
+
+    table.status-table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 18px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.55); }
+    .status-table th, .status-table td { text-align: left; padding: 11px 14px; border-bottom: 1px solid rgba(36, 32, 24, 0.1); vertical-align: top; font-size: 0.92rem; }
+    .status-table th { background: rgba(36, 32, 24, 0.06); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .status-table tr:last-child td { border-bottom: 0; }
+    .status-table code { font-size: 0.85em; }
+
+    .diagram { margin: 18px 0; border: 1px solid rgba(36, 32, 24, 0.13); border-radius: 24px; padding: 20px; background: linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.32)), radial-gradient(circle at 50% 0%, rgba(15, 118, 110, 0.08), transparent 28rem); overflow-x: auto; }
+    .pipeline { display: grid; grid-template-columns: repeat(7, auto); gap: 6px; align-items: center; min-width: 720px; }
+    .pipeline .node { min-width: 96px; border: 1px solid rgba(36, 32, 24, 0.14); border-radius: 14px; padding: 10px 8px; background: var(--paper); font-weight: 800; text-align: center; font-size: 0.82rem; }
+    .pipeline .node small { display: block; margin-top: 3px; color: var(--muted); font-weight: 600; font-size: 0.72rem; }
+    .pipeline .arrow { color: var(--accent-2); font-weight: 900; font-size: 1.3rem; text-align: center; }
+    .layer { display: grid; grid-template-columns: 150px 1fr 110px; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,0.5); margin-bottom: 8px; }
+    .layer .role { font-weight: 800; color: var(--accent); font-size: 0.9rem; }
+    .layer .desc { color: var(--ink); font-size: 0.9rem; }
+    .layer .tag { text-align: right; }
+    .stack { display: grid; gap: 10px; }
+
+    .callout { border-left: 4px solid var(--accent-2); background: rgba(180, 83, 9, 0.07); border-radius: 0 14px 14px 0; padding: 12px 16px; margin: 14px 0; }
+    .callout.danger { border-color: var(--danger); background: rgba(185, 28, 28, 0.07); }
+    .callout.good { border-color: var(--good); background: rgba(21, 128, 61, 0.07); }
+    .callout strong { color: var(--accent-2); }
+    .callout.danger strong { color: var(--danger); }
+    .callout.good strong { color: var(--good); }
+
+    .recipe-card { border: 1px solid rgba(36, 32, 24, 0.14); border-radius: 22px; padding: 0; background: rgba(255, 250, 240, 0.9); box-shadow: 0 10px 32px rgba(52, 42, 25, 0.08); margin-top: 22px; overflow: hidden; }
+    .recipe-card > .head { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+    .recipe-card > .head .title { font-family: var(--serif); font-size: 1.5rem; letter-spacing: -0.02em; }
+    .recipe-card > .head .title code { font-family: var(--mono); font-size: 1.1rem; border: 0; background: rgba(15,118,110,0.1); color: var(--accent); }
+    .recipe-card > .head .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .recipe-card > .body { padding: 20px 22px; }
+    .recipe-card .cols { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; }
+    @media (max-width: 820px) { .recipe-card .cols { grid-template-columns: 1fr; } }
+    .recipe-card h4 { margin-top: 18px; }
+    .recipe-card .desc { color: var(--muted); margin: 0 0 6px; }
+    .reqs { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.88rem; }
+    .reqs dt { color: var(--accent); font-weight: 700; }
+    .reqs dd { margin: 0; color: var(--ink); font-family: var(--mono); font-size: 0.86em; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 0.84rem; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .sw-perh { background: var(--accent); }
+    .sw-model { background: var(--purple); }
+    .sw-escape { background: var(--accent-2); }
+
+    footer { margin-top: 36px; color: var(--muted); font-size: 0.86rem; text-align: center; }
+    .evidence { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+    a.src { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+    a.src:hover { border-bottom-style: solid; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <span class="eyebrow">bmgen / Recipes Reference</span>
+    <h1>Recipes — How to Use, How to Add, Example Use Cases</h1>
+    <p>A <em>recipe</em> is a named, deterministic ECU behavior pattern. The bmgen compiler picks a recipe by the <code>pattern:</code> field in your YAML handler, validates the handler's shape against that recipe, and renders a fixed Jinja2 template to produce the handler's Python method. This document is the complete reference: the dispatch pipeline, every existing recipe with a real example, and the step-by-step recipe for adding a new one.</p>
+    <div class="verdict">
+      <div class="verdict-card"><span class="big">8</span><strong>Recipes registered</strong><span>6 per-handler + 1 model-level<br/>(LogicGate = 4 instances)</span></div>
+      <div class="verdict-card"><span class="big">5</span><strong>Handler templates</strong><span>direct · logic · toggle · blink · websocket</span></div>
+      <div class="verdict-card"><span class="big">2</span><strong>Files to touch</strong><span>to add a new recipe<br/>(module + 1 register line)</span></div>
+      <div class="verdict-card"><span class="big">1</span><strong>Behavioral core</strong><span><code>output_value_expr()</code><br/>defines what's written</span></div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch sw-perh"></i> per-handler recipe (fired by a CAN frame)</span>
+      <span><i class="swatch sw-model"></i> model-level recipe (background task)</span>
+      <span><i class="swatch sw-escape"></i> escape hatch (novel_logic stub)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#pipeline">1. Pipeline</a>
+    <a href="#anatomy">2. Recipe anatomy</a>
+    <a href="#how-to-use">3. How to use a recipe</a>
+    <a href="#registry">4. Registry table</a>
+    <a href="#direct">DirectSignalMapping</a>
+    <a href="#threshold">ThresholdMapping</a>
+    <a href="#logic">LogicAnd / Or / Xor / Not</a>
+    <a href="#toggle">ToggleButtonState</a>
+    <a href="#blink">PeriodicBlinkingOutput</a>
+    <a href="#ws">WebsocketBridge</a>
+    <a href="#novel">novel_logic</a>
+    <a href="#add">5. Add a new recipe</a>
+    <a href="#cheatsheet">6. Cheatsheet</a>
+  </nav>
+
+  <!-- =================== 1. PIPELINE =================== -->
+  <section id="pipeline">
+    <h2>1. Where a recipe sits in the compiler pipeline</h2>
+    <p>A recipe is dispatched in <strong>two</strong> places and never elsewhere. Knowing both is the key to understanding the system.</p>
+    <div class="diagram">
+      <div class="pipeline">
+        <div class="node">YAML<br><small>pattern:</small></div>
+        <div class="arrow">→</div>
+        <div class="node">builder<br><small>build_ir</small></div>
+        <div class="arrow">→</div>
+        <div class="node">validators<br><small>13 invariants</small></div>
+        <div class="arrow">→</div>
+        <div class="node">context_builder<br><small>recipe dispatch</small></div>
+        <div class="arrow">→</div>
+        <div class="node">Jinja2<br><small>handler_*.py.j2</small></div>
+        <div class="arrow">→</div>
+        <div class="node">__main__.py<br><small>handler method</small></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="layer">
+        <div class="role">Dispatch 1 — <code class="evidence">_apply_value_exprs</code></div>
+        <div class="desc">Runs <em>after</em> IR validation. For every non-<code>novel_logic</code> handler it looks up the recipe by <code>pattern</code> and calls <code>recipe.output_value_expr(handler)</code>, stamping the result onto every <code>OutputSignalIR.value_expr</code>. This is the <strong>behavioral core</strong>: the single place a recipe says "this is the value I write".</div>
+        <div class="tag"><a class="src" href="../../remotive-bm-compiler/bmgen/ir/builder.py#L318">builder.py:318</a></div>
+      </div>
+      <div class="layer">
+        <div class="role">Dispatch 2 — <code class="evidence">build_template_context</code></div>
+        <div class="desc">For each handler it calls <code>recipe.validate(handler_ir)</code> (raises on error) then <code>recipe.build_context(handler_ir)</code> to produce the Jinja2 variables for the handler template. WebsocketBridge is dispatched separately here for each <code>WebsocketListenerIR</code> — <em>not</em> through the handler loop.</div>
+        <div class="tag"><a class="src" href="../../remotive-bm-compiler/bmgen/compiler/context_builder.py#L88">context_builder.py:88</a></div>
+      </div>
+      <div class="layer">
+        <div class="role">Guard — Invariant 9</div>
+        <div class="desc">The validator rejects any <code>pattern</code> not in the registry, <em>unless</em> <code>novel_logic: true</code> is set. The known set is read from the registry itself, so registering a recipe is enough — no validator edit needed.</div>
+        <div class="tag"><a class="src" href="../../remotive-bm-compiler/bmgen/ir/validators.py#L198">validators.py:198</a></div>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>Why two dispatches?</strong> <code>output_value_expr</code> (Dispatch 1) answers <em>"what value?"</em> and is also used by the verifier's value-expression checks. <code>validate</code> + <code>build_context</code> (Dispatch 2) answer <em>"is the shape legal, and what template vars?"</em>. Splitting them means a recipe's semantics live in one method, and its template plumbing in another — adding a recipe rarely touches <code>build_context</code> boilerplate.
+    </div>
+  </section>
+
+  <!-- =================== 2. ANATOMY =================== -->
+  <section id="anatomy">
+    <h2>2. The Recipe contract (anatomy)</h2>
+    <p>Every recipe is a subclass of the abstract <code>Recipe</code> base. Five members are mandatory; <code>output_value_expr</code> has a sensible default.</p>
+    <pre><code>class Recipe(ABC):
+    @property
+    def name(self) -> str: ...            # unique registry key, e.g. "DirectSignalMapping"
+    @property
+    def description(self) -> str: ...     # one-line human text (shown by `bmgen recipes`)
+    @property
+    def template_name(self) -> str: ...   # Jinja2 file, e.g. "handler_direct.py.j2"
+    def validate(self, handler_ir) -> list[str]: ...   # return [] if OK, else error strings
+    def build_context(self, handler_ir) -> RecipeContext: ...  # Jinja2 vars for the template
+    def output_value_expr(self, handler_ir) -> str: ...        # OPTIONAL — the value written
+    def required_fields(self) -> dict: ...                     # OPTIONAL — for `bmgen recipes`</code></pre>
+    <div class="grid">
+      <div class="card">
+        <h3>What each method owns</h3>
+        <div class="metric"><b><code>validate</code></b><span>shape rules: input/output counts, state presence, periodic presence, threshold set</span></div>
+        <div class="metric"><b><code>output_value_expr</code></b><span>the Python expression written to every output signal — the behavior</span></div>
+        <div class="metric"><b><code>build_context</code></b><span>template variables (names, refs, tuples, ns var placeholders)</span></div>
+        <div class="metric"><b><code>template_name</code></b><span>which <code>handler_*.py.j2</code> renders this handler</span></div>
+      </div>
+      <div class="card">
+        <h3>The 5 handler templates</h3>
+        <div class="metric"><b><code>handler_direct.py.j2</code></b><span>read 1 signal → <code>update_signals</code>. Used by Direct + Threshold</span></div>
+        <div class="metric"><b><code>handler_logic.py.j2</code></b><span>read N signals → <code>update_signals</code>. Used by 4 logic gates</span></div>
+        <div class="metric"><b><code>handler_toggle.py.j2</code></b><span>read 1 → toggle bool state → <code>update_signals</code></span></div>
+        <div class="metric"><b><code>handler_blink.py.j2</code></b><span>read 1 → start/stop ticker → blink loop</span></div>
+        <div class="metric"><b><code>handler_websocket.py.j2</code></b><span>background ws loop → <code>update_signals</code></span></div>
+      </div>
+    </div>
+    <p class="evidence">Evidence: <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/base.py#L29">base.py:29 (Recipe ABC)</a> · templates in <a class="src" href="../../remotive-bm-compiler/bmgen/compiler/templates/">bmgen/compiler/templates/</a></p>
+  </section>
+
+  <!-- =================== 3. HOW TO USE =================== -->
+  <section id="how-to-use">
+    <h2>3. How to use a recipe (3 steps)</h2>
+    <div class="grid-3">
+      <div class="card">
+        <h3>① Pick a pattern</h3>
+        <p>Run <code>bmgen recipes</code> to list every registered recipe with its requirements. Choose the one whose behavior matches your ECU logic.</p>
+        <pre><code>cd remotive-bm-compiler
+uv run bmgen recipes</code></pre>
+      </div>
+      <div class="card">
+        <h3>② Write the handler</h3>
+        <p>Set <code>pattern:</code> to the recipe name and provide the fields that recipe requires (inputs, outputs, and recipe-specific keys like <code>threshold</code> or <code>state</code>).</p>
+        <pre><code>handlers:
+  - name: on_seat_occupancy
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: "&gt;="
+    true_when: below
+    input:  { namespace: ..., signal: ... }
+    output: { namespace: ..., signals: [...] }</code></pre>
+      </div>
+      <div class="card">
+        <h3>③ Generate + verify</h3>
+        <p>Generate the model; the recipe's <code>validate()</code> runs during generation and fails loudly if the shape is wrong. Then run the 3-layer verifier.</p>
+        <pre><code>uv run bmgen generate seat_ecu.yaml --out gen/
+uv run bmgen verify gen/ --spec seat_ecu.yaml</code></pre>
+      </div>
+    </div>
+    <div class="callout danger">
+      <strong>One handler = one CAN frame.</strong> Every per-handler recipe fires on exactly one <code>frame_filter</code>. All input signals in a handler must live in that <em>same</em> frame — that is why <code>LogicAnd</code> reads <code>LogicInputs.A</code> and <code>LogicInputs.B</code> from one <code>LogicInputs</code> frame, not two. To fuse signals from two different frames, use the latch-and-recompute pattern with <code>novel_logic: true</code> (see <a href="#novel">the escape hatch</a>).
+    </div>
+  </section>
+
+  <!-- =================== 4. REGISTRY TABLE =================== -->
+  <section id="registry">
+    <h2>4. Registry at a glance</h2>
+    <table class="status-table">
+      <thead><tr><th>Pattern name</th><th>Scope</th><th>Inputs</th><th>State</th><th>Periodic</th><th>Template</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td><code>DirectSignalMapping</code></td><td><span class="badge teal">handler</span></td><td>1</td><td>no</td><td>no</td><td><code>handler_direct</code></td><td>forward a button to turn lights</td></tr>
+        <tr><td><code>ThresholdMapping</code></td><td><span class="badge teal">handler</span></td><td>1</td><td>no</td><td>no</td><td><code>handler_direct</code></td><td>weight sensor → child-present flag</td></tr>
+        <tr><td><code>LogicAnd</code></td><td><span class="badge teal">handler</span></td><td>≥2</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>all-true gate</td></tr>
+        <tr><td><code>LogicOr</code></td><td><span class="badge teal">handler</span></td><td>≥2</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>any-true gate</td></tr>
+        <tr><td><code>LogicXor</code></td><td><span class="badge teal">handler</span></td><td>≥2</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>odd-count-true gate</td></tr>
+        <tr><td><code>LogicNot</code></td><td><span class="badge teal">handler</span></td><td>1</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>invert one signal</td></tr>
+        <tr><td><code>ToggleButtonState</code></td><td><span class="badge teal">handler</span></td><td>1</td><td><span class="badge info">bool</span></td><td>no</td><td><code>handler_toggle</code></td><td>press → toggle hazard on/off</td></tr>
+        <tr><td><code>PeriodicBlinkingOutput</code></td><td><span class="badge teal">handler</span></td><td>1</td><td><span class="badge info">bool</span></td><td><span class="badge warn">yes</span></td><td><code>handler_blink</code></td><td>turn-signal blinker</td></tr>
+        <tr><td><code>WebsocketBridge</code></td><td><span class="badge purp">model-level</span></td><td>0 (ws)</td><td>no</td><td><span class="badge warn">bg task</span></td><td><code>handler_websocket</code></td><td>external camera ws → CAN</td></tr>
+        <tr><td><code>novel_logic: true</code></td><td><span class="badge warn">escape</span></td><td>—</td><td>—</td><td>—</td><td>inline stub</td><td>any pattern not in the registry</td></tr>
+      </tbody>
+    </table>
+    <p class="evidence">Evidence: registry built in <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/registry.py#L49">registry.py:49 (create_default_registry)</a>. LogicGate is one class instantiated 4× (<a class="src" href="../../remotive-bm-compiler/bmgen/recipes/registry.py#L57">registry.py:57</a>).</p>
+  </section>
+
+  <!-- =================== DIRECTSIGNALMAPPING =================== -->
+  <div id="direct" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>DirectSignalMapping</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge good">stateless</span><span class="badge info">simplest</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Read one input signal and forward the <em>same</em> value to one or more output signals. The simplest pattern — matches the Remotive getting-started BCM example where a hazard button is forwarded to both turn-light request signals.</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Inputs</dt><dd>exactly 1</dd>
+            <dt>Outputs</dt><dd>≥ 1</dd>
+            <dt>State</dt><dd>none</dd>
+            <dt>Periodic</dt><dd>none</dd>
+            <dt>Value written</dt><dd>the input signal value, verbatim</dd>
+          </dl>
+          <h4>Generated handler</h4>
+<pre><code>async def on_hazard_light(self, frame: Frame) -> None:
+    hazard_light_signal = frame.signals["HazardLightButton.HazardLightButton"]
+    await self.body_can_0.restbus.update_signals(
+        ("TurnLightControl.RightTurnLightRequest", hazard_light_signal),
+        ("TurnLightControl.LeftTurnLightRequest", hazard_light_signal),
+    )</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — CAN signal routing</h4>
+          <p>A gateway-style ECU that must mirror one incoming signal onto several outgoing CAN signals with no transformation. This is the canonical "passthrough" — the value is copied byte-for-byte.</p>
+<pre><code>model:
+  name: BCM
+  ecu_name: BCM
+namespaces:
+  - name: BCM-BodyCan0
+    type: can
+    role: output
+    restbus: { sender_filter: BCM }
+  - name: BCM-DriverCan0
+    type: can
+    role: input
+handlers:
+  - name: on_hazard_light
+    pattern: DirectSignalMapping
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: HazardLightButton
+      signal: HazardLightButton.HazardLightButton
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.RightTurnLightRequest
+        - TurnLightControl.LeftTurnLightRequest</code></pre>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/direct_signal_mapping.py#L22">direct_signal_mapping.py:22</a> · example <a class="src" href="../../remotive-bm-compiler/examples/bcm_direct.yaml">examples/bcm_direct.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== THRESHOLDMAPPING =================== -->
+  <div id="threshold" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>ThresholdMapping</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge good">stateless</span><span class="badge warn">operator must be quoted</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Compare one analog (float) input against a threshold and output <code>1</code>/<code>0</code>. Generalized with two optional knobs: <code>operator</code> (default <code>&gt;</code>) and <code>true_when</code> (default <code>above</code>). Used to normalize a raw sensor value into a boolean detection flag.</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Inputs</dt><dd>exactly 1 (the analog value)</dd>
+            <dt>Outputs</dt><dd>≥ 1 (the boolean result)</dd>
+            <dt>State / Periodic</dt><dd>none</dd>
+            <dt><code>threshold</code></dt><dd>required float</dd>
+            <dt><code>operator</code></dt><dd>optional — <code>&gt; &gt;= &lt; &lt;= == !=</code></dd>
+            <dt><code>true_when</code></dt><dd>optional — <code>above</code> | <code>below</code></dd>
+          </dl>
+          <h4>Value written</h4>
+          <p><code>true_when: above</code> → <code>1 if (input op threshold) else 0</code><br>
+             <code>true_when: below</code> → <code>1 if not (input op threshold) else 0</code></p>
+          <h4>Generated handler</h4>
+<pre><code>async def on_seat_occupancy(self, frame: Frame) -> None:
+    seat_weight_sensor_signal = frame.signals["SeatWeightSensor.WeightKg"]
+    await self.seat_cpd_can_0.restbus.update_signals(
+        ("SeatInput.SeatOccupied", 1 if not (seat_weight_sensor_signal >= 8) else 0),
+    )</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — seat-weight child detection</h4>
+          <p>A child is light, so <code>SeatOccupied</code> (child present) is <strong>TRUE when weight is BELOW</strong> 8 kg. The author's rule "False if weight ≥ 8 else True" is expressed as <code>operator: "&gt;="</code> + <code>true_when: below</code> → <code>1 if not (weight &gt;= 8) else 0</code>, with no hand-filled stub.</p>
+<pre><code>handlers:
+  - name: on_seat_occupancy
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: "&gt;="          # MUST be quoted — see warning
+    true_when: below
+    input:
+      namespace: SEAT-CpdCan0
+      frame_filter: SeatWeightSensor
+      signal: SeatWeightSensor.WeightKg
+    output:
+      namespace: SEAT-CpdCan0
+      signals:
+        - SeatInput.SeatOccupied</code></pre>
+          <div class="callout danger">
+            <strong>YAML quoting trap.</strong> <code>operator: &gt;=</code> <em>unquoted</em> is invalid YAML — <code>&gt;</code> is the folded-block-scalar indicator, so it raises <code>yaml.YAMLError</code> at parse time, <em>before</em> any recipe validation can give a friendly message. Always quote: <code>operator: "&gt;="</code>. Omitting <code>operator</code> entirely is valid (defaults to <code>&gt;</code>).
+          </div>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/threshold_mapping.py#L56">threshold_mapping.py:56</a> · example <a class="src" href="../../vehicle_functions/child_detection/seat_ecu.yaml">vehicle_functions/child_detection/seat_ecu.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== LOGIC GATES =================== -->
+  <div id="logic" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>LogicAnd</code> · <code>LogicOr</code> · <code>LogicXor</code> · <code>LogicNot</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge good">stateless</span><span class="badge info">1 class × 4</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Combine multiple input signals from <strong>one frame</strong> with a boolean operator and write a <code>0</code>/<code>1</code> result. All four are the same class (<code>LogicGateRecipe</code>) parameterized by operator — only <code>output_value_expr</code> differs. Stateless: output depends only on the current frame.</p>
+      <div class="cols">
+        <div>
+          <h4>Arity</h4>
+          <dl class="reqs">
+            <dt><code>LogicAnd / Or / Xor</code></dt><dd>≥ 2 inputs (N-ary)</dd>
+            <dt><code>LogicNot</code></dt><dd>exactly 1 input</dd>
+            <dt>Outputs</dt><dd>≥ 1</dd>
+            <dt>State / Periodic</dt><dd>none</dd>
+          </dl>
+          <h4>Value written</h4>
+          <dl class="reqs">
+            <dt>AND</dt><dd><code>1 if (a and b and ...) else 0</code></dd>
+            <dt>OR</dt><dd><code>1 if (a or b or ...) else 0</code></dd>
+            <dt>XOR</dt><dd><code>1 if (sum of truthy) % 2 == 1 else 0</code></dd>
+            <dt>NOT</dt><dd><code>1 if not a else 0</code></dd>
+          </dl>
+          <h4>Generated handler (AND)</h4>
+<pre><code>async def on_logic_and(self, frame: Frame) -> None:
+    logic_inputs_signal = frame.signals["LogicInputs.A"]
+    logic_inputs_signal_2 = frame.signals["LogicInputs.B"]
+    await self.output_can_0.restbus.update_signals(
+        ("LogicOutputs.AND_Result", 1 if (logic_inputs_signal and logic_inputs_signal_2) else 0),
+    )</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — boolean fusion in one frame</h4>
+          <p>A logic ECU that must compute several boolean gates over a single <code>LogicInputs</code> frame carrying flags A and B. Each gate is a separate handler on the same frame; the compiler reads <em>N</em> signals from that one frame per handler.</p>
+<pre><code>handlers:
+  - name: on_logic_and
+    pattern: LogicAnd
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signals:                       # list form — multiple signals
+        - LogicInputs.A
+        - LogicInputs.B
+    output:
+      namespace: LGCM-OutputCan0
+      signals: [LogicOutputs.AND_Result]
+
+  - name: on_logic_xor
+    pattern: LogicXor
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signals: [LogicInputs.A, LogicInputs.B]
+    output:
+      namespace: LGCM-OutputCan0
+      signals: [LogicOutputs.XOR_Result]
+
+  - name: on_logic_not
+    pattern: LogicNot
+    input:
+      namespace: LGCM-InputCan0
+      frame_filter: LogicInputs
+      signal: LogicInputs.A          # scalar form — single signal
+    output:
+      namespace: LGCM-OutputCan0
+      signals: [LogicOutputs.NOT_Result]</code></pre>
+          <div class="callout">
+            <strong>Multi-input needs <code>signals:</code> (list).</strong> A single-input gate like <code>LogicNot</code> uses the scalar <code>signal:</code> key; multi-input gates use the list <code>signals:</code> key. The builder accepts both and the recipe's <code>validate</code> enforces the arity. Variable-name collisions in one frame (e.g. <code>LogicInputs.A</code> and <code>LogicInputs.B</code> both derive to <code>logic_inputs_signal</code>) are auto-disambiguated by the builder.
+          </div>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/logic_gate.py#L36">logic_gate.py:36</a> · example <a class="src" href="../../remotive-bm-compiler/examples/lgcm_logic_gates.yaml">examples/lgcm_logic_gates.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== TOGGLE =================== -->
+  <div id="toggle" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>ToggleButtonState</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge warn">stateful</span><span class="badge info">edge-triggered</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Read a button signal, and on each <em>press</em> (transition from 0 → non-zero) toggle an internal boolean state, then write the state to outputs as <code>1</code>/<code>0</code>. Matches the hazard-button pattern: press once → lights ON, press again → lights OFF. Tracking the previous button value makes the toggle edge-triggered, so holding the button does not flip repeatedly.</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Inputs</dt><dd>exactly 1</dd>
+            <dt>Outputs</dt><dd>≥ 1</dd>
+            <dt>State</dt><dd>required, <code>type: bool</code>, with <code>reset_value</code></dd>
+            <dt>Periodic</dt><dd>none</dd>
+            <dt>Value written</dt><dd><code>1 if self._&lt;state&gt; else 0</code></dd>
+          </dl>
+          <h4>Generated handler</h4>
+<pre><code>async def on_hazard_button(self, frame: Frame) -> None:
+    hazard_light_button_signal = frame.signals["HazardLightButton.HazardLightButton"]
+    if self._previous_hazard_enabled == 0 and hazard_light_button_signal:
+        self._hazard_enabled = not self._hazard_enabled
+        await self.body_can_0.restbus.update_signals(
+            ("TurnLightControl.RightTurnLightRequest", 1 if self._hazard_enabled else 0),
+            ("TurnLightControl.LeftTurnLightRequest", 1 if self._hazard_enabled else 0),
+        )
+    self._previous_hazard_enabled = hazard_light_button_signal</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — press-to-toggle hazard lights</h4>
+          <p>A body-control module where a single hazard button toggles both turn lights on or off with each press. Because the state is boolean and has a <code>reset_value</code>, the compiler also auto-generates an <code>on_reboot</code> reset handler that restores <code>hazard_enabled = false</code> and calls <code>restbus.reset()</code>.</p>
+<pre><code>handlers:
+  - name: on_hazard_button
+    pattern: ToggleButtonState
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: HazardLightButton
+      signal: HazardLightButton.HazardLightButton
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.RightTurnLightRequest
+        - TurnLightControl.LeftTurnLightRequest
+    state:
+      name: hazard_enabled
+      type: bool
+      initial: false
+      reset_value: false
+      owner: on_hazard_button
+
+reset_handler: true   # optional; auto-generated when a state has reset_value</code></pre>
+          <div class="callout good">
+            <strong><code>state.reset_value</code> is mandatory</strong> for this recipe — the recipe's <code>validate</code> rejects a state without it, because the toggle must be restorable on reboot. The reset handler resets every owned state plus all output-namespace restbuses.
+          </div>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/toggle_button_state.py#L26">toggle_button_state.py:26</a> · example <a class="src" href="../../remotive-bm-compiler/examples/bcm_toggle.yaml">examples/bcm_toggle.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== BLINK =================== -->
+  <div id="blink" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>PeriodicBlinkingOutput</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge warn">stateful</span><span class="badge purp">async ticker</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">A boolean state enables/disables a periodic async task that toggles output signals on/off at a fixed interval. Matches the turn-signal blinker: the turn stalk enables blinking, a background ticker flips the lights on and off every <code>interval_sec</code>, and disabling stops the ticker and forces the outputs to <code>0</code>. The ticker is an <code>asyncio.Task</code> that <strong>must</strong> be cancellable (<code>cleanup: true</code>).</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Inputs</dt><dd>exactly 1 (enable/disable)</dd>
+            <dt>Outputs</dt><dd>≥ 1 (the handler writes enable state)</dd>
+            <dt>State</dt><dd>required, <code>type: bool</code>, with <code>reset_value</code></dd>
+            <dt>Periodic</dt><dd>required, <code>cleanup: true</code></dd>
+            <dt><code>periodic_task.blink_output</code></dt><dd>namespace + signals to blink</dd>
+          </dl>
+          <h4>Generated handler (top) + ticker loop (bottom)</h4>
+<pre><code>async def on_turn_stalk(self, frame: Frame) -> None:
+    turn_stalk_signal = frame.signals["TurnStalk.TurnSignal"]
+    if turn_stalk_signal and not self._blink_enabled:
+        self._blink_enabled = True
+        self._start_blinking_blink_enabled()
+    elif not turn_stalk_signal and self._blink_enabled:
+        self._blink_enabled = False
+        self._stop_blinking_blink_enabled()
+        await self.body_can_0.restbus.update_signals(
+            ("TurnLightControl.LeftTurnLightRequest", 0),
+            ("TurnLightControl.RightTurnLightRequest", 0),
+        )
+
+async def _blink_loop_blink_enabled(self) -> None:
+    blink_state = True
+    while True:
+        await asyncio.sleep(1.0)
+        blink_state = not blink_state
+        await self.body_can_0.restbus.update_signals(
+            ("TurnLightControl.LeftTurnLightRequest", 1 if blink_state else 0),
+            ("TurnLightControl.RightTurnLightRequest", 1 if blink_state else 0),
+        )</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — turn-signal blinker</h4>
+          <p>The turn stalk is a boolean enable. When it goes true, the handler starts the ticker; when false, it stops the ticker and zeros the lights. The <code>blink_output</code> block names which signals the ticker flips — here, both turn-light requests.</p>
+<pre><code>handlers:
+  - name: on_turn_stalk
+    pattern: PeriodicBlinkingOutput
+    input:
+      namespace: BCM-DriverCan0
+      frame_filter: TurnStalk
+      signal: TurnStalk.TurnSignal
+    output:
+      namespace: BCM-BodyCan0
+      signals:
+        - TurnLightControl.LeftTurnLightRequest
+        - TurnLightControl.RightTurnLightRequest
+    state:
+      name: blink_enabled
+      type: bool
+      initial: false
+      reset_value: false
+      owner: on_turn_stalk
+    periodic_task:
+      interval_sec: 1.0
+      blink_output:
+        namespace: BCM-BodyCan0
+        signals:
+          - TurnLightControl.LeftTurnLightRequest
+          - TurnLightControl.RightTurnLightRequest
+      cleanup: true            # required — ticker must be cancellable
+
+reset_handler: true</code></pre>
+          <div class="callout danger">
+            <strong><code>cleanup: true</code> is enforced.</strong> The recipe's <code>validate</code> rejects a periodic task without <code>cleanup: true</code>, because a non-cancellable ticker would leak across reboots. The generated <code>on_reboot</code> handler stops every ticker and cancels every websocket task before resetting state.
+          </div>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/periodic_blinking_output.py#L20">periodic_blinking_output.py:20</a> · example <a class="src" href="../../remotive-bm-compiler/examples/bcm_blinking.yaml">examples/bcm_blinking.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== WEBSOCKET =================== -->
+  <div id="ws" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>WebsocketBridge</code></div>
+      <div class="badges"><span class="badge purp">model-level</span><span class="badge warn">bg task</span><span class="badge info">no CAN frame</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Bridge an external websocket stream onto a CAN restbus. This is the only <strong>model-level</strong> recipe — it is <em>not</em> a handler. It runs a background <code>asyncio</code> task for the ECU's whole lifetime: connect to <code>ws://</code>, read JSON messages, map each payload key to a restbus signal, and publish via <code>update_signals</code>. On disconnect it logs a warning and reconnects after <code>reconnect_delay_sec</code>; on exit/reboot the task is cancelled.</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Scope</dt><dd>model-level — declared under <code>websocket_listeners:</code></dd>
+            <dt><code>url</code></dt><dd><code>ws://</code> or <code>wss://</code></dd>
+            <dt><code>output_namespace</code></dt><dd>an output namespace with restbus</dd>
+            <dt><code>signal_map</code></dt><dd>non-empty list of <code>{ws_key, signal}</code></dd>
+            <dt><code>cleanup</code></dt><dd>must be <code>true</code></dd>
+            <dt><code>reconnect_delay_sec</code></dt><dd>optional, default <code>2.0</code></dd>
+          </dl>
+          <h4>Generated background loop</h4>
+<pre><code>async def _ws_loop_camera_child_detection(self) -> None:
+    ws_url = "ws://localhost:1122"
+    signal_map = [
+        ("ChildDetected", "CPDCameraData.ChildDetected"),
+        ("CameraAvailability", "CPDCameraData.CameraAvailability"),
+    ]
+    while True:
+        try:
+            async with websockets.connect(ws_url) as ws:
+                async for raw in ws:
+                    payload = json.loads(raw)
+                    await self.seat_can_0.restbus.update_signals(
+                        *[(sig, payload.get(k)) for k, sig in signal_map]
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logging.warning("ws bridge ... %s", exc)
+            await asyncio.sleep(2.0)</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — external camera service → CAN</h4>
+          <p>A driver-monitoring ECU whose camera detector is an <em>outside</em> service pushing JSON over a websocket. The ECU bridges that stream onto the vehicle CAN bus so other ECUs can consume it as ordinary CAN signals. A normal CAN-frame handler (<code>on_selftest</code>) coexists with the listener — the two are independent.</p>
+<pre><code>websocket_listeners:
+  - name: camera_child_detection
+    url: ws://localhost:1122
+    output_namespace: DMS-SeatCan0
+    signal_map:
+      - ws_key: ChildDetected
+        signal: CPDCameraData.ChildDetected
+      - ws_key: CameraAvailability
+        signal: CPDCameraData.CameraAvailability
+    cleanup: true
+    reconnect_delay_sec: 2.0
+
+handlers:
+  - name: on_selftest            # normal CAN handler, unrelated to the ws bridge
+    pattern: DirectSignalMapping
+    input:
+      namespace: DMS-DiagCan0
+      frame_filter: DmsSelfTest
+      signal: DmsSelfTest.Trigger
+    output:
+      namespace: DMS-SeatCan0
+      signals: [CPDCameraData.CameraAvailability]</code></pre>
+          <div class="callout">
+            <strong>Why model-level, not a handler?</strong> Every handler is triggered by an incoming CAN frame (<code>create_input_handler</code> + <code>FrameFilter</code>). A websocket has no CAN frame, so it cannot be a handler. The listener is launched in <code>main()</code> inside the <code>BehavioralModel</code> context before <code>run_forever()</code>, and cancelled in a <code>finally</code>. The recipe enforces this with an <code>isinstance</code> guard so it cannot be mis-dispatched through the per-handler loop.
+          </div>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/websocket_bridge.py#L29">websocket_bridge.py:29</a> · example <a class="src" href="../../remotive-bm-compiler/examples/dms_camera_websocket.yaml">examples/dms_camera_websocket.yaml</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== NOVEL LOGIC =================== -->
+  <section id="novel">
+    <h2>The escape hatch — <code>novel_logic: true</code></h2>
+    <p>When a handler's behavior does not match any registered recipe, mark it <code>novel_logic: true</code>. The compiler then generates a <strong>stub</strong> (<code>pass</code>) with comments listing the intended inputs/outputs, and you hand-fill the method body. This is how the CentralHPC child-detection fusion is modeled today: two signals live in two <em>different</em> CAN frames, so no single-frame recipe can AND them — instead each handler latches one signal into state and recomputes the alert.</p>
+    <div class="grid">
+      <div class="card">
+        <h4>What the stub looks like</h4>
+<pre><code>async def on_seat_update(self, frame: Frame) -> None:
+    # novel_logic: implement manually
+    # pattern: SeatLatch
+    # input: SeatInput.SeatOccupied from CENTRAL-CpdCan0
+    # output: ChildAlert.ChildAlertActive to CENTRAL-CpdCan0
+    pass</code></pre>
+      </div>
+      <div class="card">
+        <h4>Rules</h4>
+        <ul>
+          <li><strong>Exempts</strong> Invariant 9 (unknown pattern) — any <code>pattern:</code> string is accepted.</li>
+          <li><strong>Does NOT exempt</strong> the namespace invariants — <code>input.namespace</code> and <code>output.namespace</code> must still reference real namespaces, or you get Invariant 3/4 errors.</li>
+          <li>The <code>pattern:</code> name is free-form (e.g. <code>SeatLatch</code>, <code>CameraLatch</code>) — it is only a label in the stub comment.</li>
+          <li>The generated stub is a starting point; the running code is hand-filled afterward.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="evidence">Evidence: stub renderer <a class="src" href="../../remotive-bm-compiler/bmgen/compiler/python_generator.py#L147">python_generator.py:147</a> · invariant guard <a class="src" href="../../remotive-bm-compiler/bmgen/ir/validators.py#L198">validators.py:198</a> · live use <a class="src" href="../../vehicle_functions/child_detection/central_hpc.yaml">vehicle_functions/child_detection/central_hpc.yaml</a></p>
+  </section>
+
+  <!-- =================== 5. ADD A NEW RECIPE =================== -->
+  <section id="add">
+    <h2>5. How to add a new recipe</h2>
+    <p>Adding a recipe is a <strong>2-file</strong> change. You do not touch the builder, validators, context_builder, or templates — the registry is the single source of truth and Invariant 9 reads the known-pattern set from it automatically.</p>
+
+    <h3>Step 1 — write the recipe module</h3>
+    <p>Create <code>bmgen/recipes/&lt;your_recipe&gt;.py</code> subclassing <code>Recipe</code>. The example below is a realistic new recipe: <em>read two analog signals, output their average</em>.</p>
+<pre><code># bmgen/recipes/average_mapping.py
+"""AverageMapping recipe — average two analog inputs, write the float result."""
+
+from __future__ import annotations
+from bmgen.ir.model import HandlerIR
+from bmgen.recipes.base import Recipe, RecipeContext
+
+
+class AverageMappingRecipe(Recipe):
+
+    @property
+    def name(self) -> str:
+        return "AverageMapping"
+
+    @property
+    def description(self) -> str:
+        return "Average two analog input signals and forward the float result"
+
+    @property
+    def template_name(self) -> str:
+        return "handler_logic.py.j2"   # reuse the multi-input template
+
+    def validate(self, handler_ir: HandlerIR) -> list[str]:
+        errors = []
+        if len(handler_ir.input_signals) != 2:
+            errors.append(f"AverageMapping requires exactly 2 inputs, found {len(handler_ir.input_signals)}")
+        if len(handler_ir.output_signals) < 1:
+            errors.append("AverageMapping requires at least 1 output signal")
+        if handler_ir.state is not None:
+            errors.append("AverageMapping is stateless but state was declared")
+        if handler_ir.periodic_task is not None:
+            errors.append("AverageMapping is stateless but a periodic_task was declared")
+        return errors
+
+    def output_value_expr(self, handler_ir: HandlerIR) -> str:
+        a, b = handler_ir.input_signals[0].python_var_name, handler_ir.input_signals[1].python_var_name
+        return f"({a} + {b}) / 2.0"          # ← the behavioral core
+
+    def build_context(self, handler_ir: HandlerIR) -> RecipeContext:
+        input_tuples = [(s.name, s.python_var_name) for s in handler_ir.input_signals]
+        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        return RecipeContext(
+            handler_name=handler_ir.name,
+            pattern=self.name,
+            template_name=self.template_name,
+            context={
+                "handler_name": handler_ir.name,
+                "input_tuples": input_tuples,
+                "output_tuples": output_tuples,
+                "output_namespace_var": "",   # filled by context_builder
+            },
+        )
+
+    def required_fields(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "template": self.template_name,
+            "required_input_count": 2,
+            "required_output_count": "≥1",
+            "requires_state": False,
+            "requires_periodic": False,
+        }</code></pre>
+
+    <h3>Step 2 — register it</h3>
+    <p>Add two lines to <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/registry.py#L49">registry.py</a>: an import and a <code>register()</code> call inside <code>create_default_registry</code>.</p>
+<pre><code># bmgen/recipes/registry.py
+from bmgen.recipes.average_mapping import AverageMappingRecipe   # ← add import
+
+def create_default_registry() -> RecipeRegistry:
+    registry = RecipeRegistry()
+    registry.register(DirectSignalMappingRecipe())
+    ...
+    registry.register(AverageMappingRecipe())                    # ← add this line
+    return registry</code></pre>
+
+    <h3>Step 3 (only if needed) — add a template</h3>
+    <p>If none of the 5 existing templates fit, add <code>bmgen/compiler/templates/handler_&lt;your&gt;.py.j2</code>. The template receives exactly the keys you put in <code>build_context().context</code> plus <code>output_namespace_var</code> (filled by the context_builder). Reusing <code>handler_logic.py.j2</code> (multi-input read → <code>update_signals</code>) or <code>handler_direct.py.j2</code> (single-input read → <code>update_signals</code>) covers most stateless recipes.</p>
+
+    <div class="callout good">
+      <strong>That's it — no other edits.</strong> Invariant 9 reads <code>create_default_registry().known_patterns()</code> at validation time, so your recipe is immediately a recognized pattern. <code>bmgen recipes</code> will list it via <code>required_fields()</code>. <code>_apply_value_exprs</code> and <code>build_template_context</code> dispatch on the registry key, so your <code>output_value_expr</code> and <code>build_context</code> are picked up with zero wiring.
+    </div>
+
+    <h3>Decision guide — where to put the behavior</h3>
+    <table class="status-table">
+      <thead><tr><th>Your recipe needs…</th><th>Put it in</th><th>Template to reuse</th></tr></thead>
+      <tbody>
+        <tr><td>1 input → forward a computed value</td><td><code>output_value_expr</code> only</td><td><code>handler_direct</code></td></tr>
+        <tr><td>N inputs → computed value</td><td><code>output_value_expr</code> + list <code>input_tuples</code></td><td><code>handler_logic</code></td></tr>
+        <tr><td>A boolean state that flips on input</td><td><code>output_value_expr</code> + <code>state</code> fields in context</td><td><code>handler_toggle</code></td></tr>
+        <tr><td>A periodic background loop</td><td><code>output_value_expr</code> + <code>periodic_task</code> fields</td><td><code>handler_blink</code></td></tr>
+        <tr><td>An external non-CAN stream</td><td>subclass + <code>isinstance</code> guard (like WebsocketBridge)</td><td><code>handler_websocket</code> or new</td></tr>
+        <tr><td>Something truly novel</td><td>skip the recipe — use <code>novel_logic: true</code></td><td>inline stub</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- =================== 6. CHEATSHEET =================== -->
+  <section id="cheatsheet">
+    <h2>6. Cheatsheet</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Pick by behavior</h3>
+        <div class="metric"><b>Forward a value as-is</b><span><code>DirectSignalMapping</code></span></div>
+        <div class="metric"><b>Sensor → boolean flag</b><span><code>ThresholdMapping</code></span></div>
+        <div class="metric"><b>AND/OR/XOR of N signals</b><span><code>LogicAnd/Or/Xor</code></span></div>
+        <div class="metric"><b>Invert one signal</b><span><code>LogicNot</code></span></div>
+        <div class="metric"><b>Press button → toggle</b><span><code>ToggleButtonState</code></span></div>
+        <div class="metric"><b>Enable → blink periodically</b><span><code>PeriodicBlinkingOutput</code></span></div>
+        <div class="metric"><b>External ws → CAN</b><span><code>WebsocketBridge</code></span></div>
+        <div class="metric"><b>None of the above</b><span><code>novel_logic: true</code></span></div>
+      </div>
+      <div class="card">
+        <h3>Common gotchas</h3>
+        <ul>
+          <li><strong>One handler = one frame.</strong> All inputs must share the <code>frame_filter</code>. Cross-frame fusion → <code>novel_logic</code>.</li>
+          <li><strong>Quote <code>operator</code></strong> in ThresholdMapping: <code>operator: "&gt;="</code>, never bare <code>&gt;=</code>.</li>
+          <li><strong>State needs <code>reset_value</code></strong> for Toggle and Blink recipes — <code>validate</code> rejects it otherwise.</li>
+          <li><strong><code>cleanup: true</code> is mandatory</strong> on periodic tasks and websocket listeners.</li>
+          <li><strong>Multi-input uses <code>signals:</code></strong> (list); single-input uses <code>signal:</code> (scalar). Both accepted by the builder.</li>
+          <li><strong>WebsocketBridge is model-level</strong> — declare under <code>websocket_listeners:</code>, not <code>handlers:</code>.</li>
+          <li><strong>novel_logic still needs namespaces</strong> — Invariant 3/4 are not exempted.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Generated as a reference for the bmgen recipe system. Every claim cites a source path; every example is drawn from a real YAML in the repo.
+  </footer>
+
+</div>
+</body>
+</html>

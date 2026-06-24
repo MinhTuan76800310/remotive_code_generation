@@ -1,0 +1,49 @@
+# CockpitHMIECU — driver warning display & decision capture
+# Source diagram: CAD_ECU_architecture.drawio — node "cockpit" (CockpitHMIECU)
+#   CAN in : ChildAlert      ← arrow a_alert    ← CentralHPC
+#   CAN out: DriverDecision  → arrow a_decision → CentralHPC
+#   Function: display child warning; ask driver for action
+#             (Keep Airbag ON / Turn Airbag OFF); publish DriverDecision.
+# Role: forward the received ChildAlert to the HMI surface, and forward the
+#       driver's input back to CentralHPC as DriverDecision.
+# Design: Simulation ECU — DirectSignalMapping both directions (CAN only).
+
+model:
+  name: CockpitHMIECU
+  ecu_name: COCKPIT
+
+namespaces:
+  # All CAN on the shared CpdCan0 channel.
+  # COCKPIT-CpdCan0 is role: both — it reads ChildAlert and HmiDriverAction,
+  # and writes HmiChildWarning and DriverDecision, all on the same physical bus.
+  - name: COCKPIT-CpdCan0
+    type: can
+    role: both
+    restbus:
+      sender_filter: COCKPIT
+
+handlers:
+  # ChildAlert from CentralHPC → show child warning on HMI
+  - name: on_child_alert
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-CpdCan0
+      frame_filter: ChildAlert
+      signal: ChildAlert.ChildAlertActive
+    output:
+      namespace: COCKPIT-CpdCan0
+      signals:
+        - HmiChildWarning.ChildAlertActive
+
+  # Driver action from HMI → publish DriverDecision to CentralHPC
+  # DriverDecision = TurnAirbagOff when the driver chooses "Turn Airbag OFF".
+  - name: on_driver_action
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-CpdCan0
+      frame_filter: HmiDriverAction
+      signal: HmiDriverAction.TurnAirbagOff
+    output:
+      namespace: COCKPIT-CpdCan0
+      signals:
+        - DriverDecision.TurnAirbagOff

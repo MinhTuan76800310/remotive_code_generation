@@ -20,6 +20,7 @@ bmgen/recipes/periodic_blinking_output.py
 bmgen/recipes/registry.py
 bmgen/recipes/threshold_mapping.py
 bmgen/recipes/toggle_button_state.py
+bmgen/recipes/websocket_bridge.py
 bmgen/verifier/__init__.py
 bmgen/verifier/behavioral.py
 bmgen/verifier/composition.py
@@ -34,4 +35,6 @@ remotive_bm_compiler.egg-info/requires.txt
 remotive_bm_compiler.egg-info/top_level.txt
 tests/test_compile_direct_mapping.py
 tests/test_ir_validation.py
+tests/test_threshold_mapping.py
 tests/test_verify_generated.py
+tests/test_websocket_bridge.py

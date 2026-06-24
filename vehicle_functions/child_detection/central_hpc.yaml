@@ -1,0 +1,78 @@
+# CentralHPC — child-detection fusion, alert, and driver-decision processing
+# Source diagram: CAD_ECU_architecture.drawio — node "central" (CentralHPC)
+#   CAN in : SeatOccupied (a_seat), ChildDetectedByCamera (a_dms), AirbagStatus (a_abstatus)
+#   CAN in : DriverDecision (a_decision) from CockpitHMIECU
+#   CAN out: ChildAlert (a_alert) → CockpitHMIECU
+#   CAN out: AirbagControlCommand (a_abcmd) → AirbagControlUnit
+#
+# Diagram has TWO separate logic sections, modeled as separate handlers:
+#   1. Child Detection Logic:  ChildPresent = SeatOccupied AND ChildDetectedByCamera
+#                              Alert Logic: ChildPresent AND AirbagStatus==ON → ChildAlert
+#   2. Driver Decision Processing: DriverDecision==TurnAirbagOff → AirbagControlCommand
+#
+# Design: Simulation ECU — stateful fusion (novel_logic) for child detection,
+#          DirectSignalMapping for driver-decision routing.
+
+model:
+  name: CentralHPC
+  ecu_name: CENTRAL
+
+namespaces:
+  - name: CENTRAL-CpdCan0
+    type: can
+    role: both
+    restbus:
+      sender_filter: CENTRAL
+
+handlers:
+  # ── Section 1: Child Detection Logic (stateful fusion across two frames) ──
+  # ChildPresent = SeatOccupied AND ChildDetectedByCamera
+
+  # Latch SeatOccupied from SeatInput, recompute ChildAlertActive.
+  - name: on_seat_update
+    pattern: SeatLatch          # novel_logic — hand-filled stub
+    novel_logic: true
+    # state:
+    #   name: seat_occupied
+    #   type: bool
+    #   initial: false
+    #   owner: on_seat_update
+    # input:
+    #   namespace: CENTRAL-CpdCan0
+    #   frame_filter: SeatInput
+    #   signal: SeatInput.SeatOccupied
+    # output:
+    #   namespace: CENTRAL-CpdCan0
+    #   signals:
+    #     - ChildAlert.ChildAlertActive
+
+  # Latch ChildDetectedByCamera from CameraInput, recompute ChildAlertActive.
+  - name: on_camera_update
+    pattern: CameraLatch        # novel_logic — hand-filled stub
+    novel_logic: true
+    # state:
+    #   name: camera_detected
+    #   type: bool
+    #   initial: false
+    #   owner: on_camera_update
+    # input:
+    #   namespace: CENTRAL-CpdCan0
+    #   frame_filter: CameraInput
+    #   signal: CameraInput.ChildDetectedByCamera
+    # output:
+    #   namespace: CENTRAL-CpdCan0
+    #   signals:
+    #     - ChildAlert.ChildAlertActive
+
+  # ── Section 2: Driver Decision Processing ──
+  # IF DriverDecision == TurnAirbagOff THEN generate AirbagControlCommand → AirbagControlUnit
+  - name: on_driver_decision
+    pattern: DirectSignalMapping
+    input:
+      namespace: CENTRAL-CpdCan0
+      frame_filter: DriverDecision
+      signal: DriverDecision.TurnAirbagOff
+    output:
+      namespace: CENTRAL-CpdCan0
+      signals:
+        - AirbagControlCommand.AirbagControlCommand
