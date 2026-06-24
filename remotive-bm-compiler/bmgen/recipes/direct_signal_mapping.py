@@ -51,10 +51,13 @@ class DirectSignalMappingRecipe(Recipe):
                 f"found {len(handler_ir.input_signals)}"
             )
 
-        if len(handler_ir.output_signals) < 1:
+        flat_output_signals = [
+            sig for g in handler_ir.output_groups for sig in g.signals
+        ]
+        if len(flat_output_signals) < 1:
             errors.append(
                 f"DirectSignalMapping requires at least 1 output signal, "
-                f"found {len(handler_ir.output_signals)}"
+                f"found {len(flat_output_signals)}"
             )
 
         if handler_ir.state is not None:
@@ -85,8 +88,14 @@ class DirectSignalMappingRecipe(Recipe):
         input_var = input_signal.python_var_name
         input_ref = input_signal.name
 
-        # Build output tuples: (signal_name, value_expr)
-        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        # Build output tuples: (signal_name, value_expr) — flattened across all
+        # output_groups. Multi-output fan-out is handled by the inline template
+        # branch on `output_groups|length > 1`, not here.
+        output_tuples = [
+            (s.name, s.value_expr)
+            for g in handler_ir.output_groups
+            for s in g.signals
+        ]
 
         # Find the output namespace Python variable name
         # This will be resolved by the context_builder which has access to the full IR

@@ -55,10 +55,13 @@ class ToggleButtonStateRecipe(Recipe):
                 f"found {len(handler_ir.input_signals)}"
             )
 
-        if len(handler_ir.output_signals) < 1:
+        flat_output_signals = [
+            sig for g in handler_ir.output_groups for sig in g.signals
+        ]
+        if len(flat_output_signals) < 1:
             errors.append(
                 f"ToggleButtonState requires at least 1 output signal, "
-                f"found {len(handler_ir.output_signals)}"
+                f"found {len(flat_output_signals)}"
             )
 
         if handler_ir.state is None:
@@ -97,10 +100,15 @@ class ToggleButtonStateRecipe(Recipe):
         input_signal = handler_ir.input_signals[0]
         state = handler_ir.state
 
-        # Build output tuples
-        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        # Build output tuples (flattened across output_groups).
+        output_tuples = [
+            (s.name, s.value_expr)
+            for g in handler_ir.output_groups
+            for s in g.signals
+        ]
 
-        # Previous state variable tracks the last known button value to detect "press"
+
+# Type hint for HandlerIR — keeps existing imports working
         previous_state_var = f"_previous_{state.name}"
 
         return RecipeContext(

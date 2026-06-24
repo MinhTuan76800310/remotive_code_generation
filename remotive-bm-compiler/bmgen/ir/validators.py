@@ -94,29 +94,53 @@ def _check_handler_input_namespace_exists(ir: "BehavioralModelIR") -> list[Valid
 
 
 def _check_handler_output_namespace_exists(ir: "BehavioralModelIR") -> list[ValidationViolation]:
-    """Invariant 4: Handler output_namespace must reference an existing namespace."""
+    """Invariant 4: every output_group.namespace in a handler must reference an existing namespace.
+
+    With multi-output handlers, each handler has one input_namespace but a list
+    of output_groups. This invariant checks every group.namespace against the
+    set of inferred namespaces. Groups with an empty namespace name are skipped
+    here (they will fail the build via the spec parse, not via the IR).
+    """
     ns_names = {ns.name for ns in ir.namespaces}
     violations = []
     for handler in ir.handlers:
-        if handler.output_namespace not in ns_names:
-            violations.append(
-                ValidationViolation(
-                    rule="handler_output_namespace_exists",
-                    message=f"Handler '{handler.name}' references non-existent output namespace '{handler.output_namespace}'",
+        for group in handler.output_groups:
+            if not group.namespace:
+                # Empty namespace — already rejected by builder; don't double-report.
+                continue
+            if group.namespace not in ns_names:
+                violations.append(
+                    ValidationViolation(
+                        rule="handler_output_namespace_exists",
+                        message=(
+                            f"Handler '{handler.name}' output_group references non-existent "
+                            f"namespace '{group.namespace}'"
+                        ),
+                    )
                 )
-            )
     return violations
 
 
 def _check_output_namespace_has_restbus(ir: "BehavioralModelIR") -> list[ValidationViolation]:
-    """Invariant 5: Output namespace must have restbus config.
+    """Invariant 5: every output namespace (across all handler output_groups) must have restbus.
 
-    In Remotive Behavioral Models, an output namespace (where restbus.update_signals
-    is called) must have a RestbusConfig with a SenderFilter. This is required
-    by the CanNamespace constructor for output namespaces.
+    With multi-output handlers, "output namespaces" is the union of every
+    output_group.namespace + every ws.output_namespace. Each must be a
+    NamespaceIR with role 'output'/'both' and a RestbusConfig. Inference
+    auto-creates RestbusConfig for output/both roles, so this invariant is
+    defense-in-depth: it would fire only if `_infer_namespaces` were bypassed
+    or extended in a way that omits restbus.
     """
     violations = []
-    output_ns_names = {h.output_namespace for h in ir.handlers}
+    output_ns_names: set[str] = set()
+    for handler in ir.handlers:
+        for group in handler.output_groups:
+            if group.namespace:
+                output_ns_names.add(group.namespace)
+    for ws in ir.websocket_listeners:
+        if ws.output_namespace:
+            output_ns_names.add(ws.output_namespace)
+
     for ns in ir.namespaces:
         if ns.name in output_ns_names:
             if ns.role not in ("output", "both"):
@@ -408,6 +432,102 @@ def _check_websocket_listeners(ir: "BehavioralModelIR") -> list[ValidationViolat
                     rule="websocket_listener_invalid",
                     message=f"websocket_listener '{ws.name}' has cleanup={ws.cleanup} "
                     f"(must be True — the background task must be cancelled on exit/reboot)",
+                )
+            )
+
+    return violations
+
+
+# Closed set of valid namespace types. The validator is the single source of
+# truth so future types (lin, someip) plug in here and the type map becomes a
+# controlled vocabulary.
+_VALID_NAMESPACE_TYPES = frozenset({"can"})
+
+
+def validate_namespace_types(spec: dict, ir: "BehavioralModelIR") -> list[ValidationViolation]:
+    """Validate the `namespace_types:` map against the inferred IR.
+
+    Three rules (added with the `namespace_types:` schema in service_oriented):
+
+    14. `namespace_type_required_for_referenced` (error)
+        Every name referenced in handler input_namespace, output_group.namespace,
+        or ws.output_namespace must appear as a key in `namespace_types:`.
+        Catches typos at compile time instead of letting a phantom namespace
+        sneak through inference.
+
+    15. `namespace_type_unknown` (error)
+        Every key's value must be in the closed type set {can, ...}. Today only
+        `can` is real; the validator is the source of truth so future types
+        plug in here without a builder change.
+
+    16. `namespace_type_orphan` (warning, not error)
+        Every key in `namespace_types:` that has zero refs across handlers + ws
+        produces a *warning* (severity="warning"). This is a usability rule:
+        drift bugs (dead-namespace declarations) are flagged without blocking
+        the build, so a user can iteratively wire up partial specs.
+
+    Note: this function is called by the builder *before* `validate(ir)`,
+    because it needs the raw spec to inspect the type map.
+    """
+    violations: list[ValidationViolation] = []
+    type_map: dict = spec.get("namespace_types", {}) or {}
+    has_old_namespaces_block = bool(spec.get("namespaces"))
+
+    # Collect every referenced namespace name from IR.
+    referenced: set[str] = set()
+    for h in ir.handlers:
+        if h.input_namespace:
+            referenced.add(h.input_namespace)
+        for g in h.output_groups:
+            if g.namespace:
+                referenced.add(g.namespace)
+    for ws in ir.websocket_listeners:
+        if ws.output_namespace:
+            referenced.add(ws.output_namespace)
+
+    # Rule 14: every ref must appear in namespace_types — but skip during the
+    # migration window if the deprecated top-level `namespaces:` block is still
+    # present (the old block already declares the namespaces explicitly). The
+    # build_ir DeprecationWarning still nudges the user to migrate.
+    if not has_old_namespaces_block:
+        for name in referenced:
+            if name not in type_map:
+                violations.append(
+                    ValidationViolation(
+                        rule="namespace_type_required_for_referenced",
+                        message=(
+                            f"Namespace '{name}' is referenced by a handler or websocket_listener "
+                            f"but is not declared in `namespace_types:`. Add an entry "
+                            f"`{name}: <type>` (e.g., `{name}: can`) under `namespace_types:`."
+                        ),
+                    )
+                )
+
+    # Rule 15: every type value must be in the closed set.
+    for name, type_value in type_map.items():
+        if type_value not in _VALID_NAMESPACE_TYPES:
+            violations.append(
+                ValidationViolation(
+                    rule="namespace_type_unknown",
+                    message=(
+                        f"`namespace_types.{name}` has unknown type '{type_value}'. "
+                        f"Valid types: {sorted(_VALID_NAMESPACE_TYPES)}."
+                    ),
+                )
+            )
+
+    # Rule 16: orphan keys (declared but never referenced) — WARNING.
+    for name in type_map.keys():
+        if name not in referenced:
+            violations.append(
+                ValidationViolation(
+                    rule="namespace_type_orphan",
+                    severity="warning",
+                    message=(
+                        f"`namespace_types.{name}` is declared but never referenced by "
+                        f"any handler or websocket_listener. Either wire it up or remove "
+                        f"the declaration."
+                    ),
                 )
             )
 

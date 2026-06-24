@@ -191,7 +191,8 @@ def _verify_direct_mapping(
     report: VerificationReport,
 ) -> bool:
     """Verify DirectSignalMapping: output signals match input value."""
-    output_ns_name = handler_ir.output_namespace
+    # Use the first output_group's namespace — single-output semantics for this verifier.
+    output_ns_name = handler_ir.output_groups[0].namespace if handler_ir.output_groups else ""
     mock_restbus = mock_restbuses.get(output_ns_name)
 
     if mock_restbus is None or not mock_restbus.calls:
@@ -201,7 +202,10 @@ def _verify_direct_mapping(
 
     # Check that the output tuples contain the expected signal names
     last_call = mock_restbus.calls[-1]
-    expected_signal_names = [s.name for s in handler_ir.output_signals]
+    # Flatten output_groups → flat signal-name list for the single-output verifier.
+    expected_signal_names = [
+        s.name for g in handler_ir.output_groups for s in g.signals
+    ]
     actual_signal_names = [t[0] for t in last_call]
 
     if actual_signal_names == expected_signal_names:
@@ -233,7 +237,8 @@ def _verify_toggle_button(
     report: VerificationReport,
 ) -> bool:
     """Verify ToggleButtonState: press once → enabled, press twice → disabled."""
-    output_ns_name = handler_ir.output_namespace
+    # Use the first output_group's namespace — single-output semantics for this verifier.
+    output_ns_name = handler_ir.output_groups[0].namespace if handler_ir.output_groups else ""
     mock_restbus = mock_restbuses.get(output_ns_name)
     handler_method = getattr(model_instance, handler_ir.name)
 
@@ -344,14 +349,15 @@ def _run_ast_behavioral_checks(
             continue
         if handler_ir.pattern == "DirectSignalMapping":
             # Check that the handler reads the input signal and writes to output signals
-            for output_sig in handler_ir.output_signals:
-                if output_sig.name in content:
-                    report.add_check("behavioral", "direct_signal_mapping_signal_refs", "PASS",
-                                     f"Output signal '{output_sig.name}' referenced in code")
-                else:
-                    report.add_check("behavioral", "direct_signal_mapping_signal_refs", "FAIL",
-                                     f"Output signal '{output_sig.name}' not found in code")
-                    all_pass = False
+            for g in handler_ir.output_groups:
+                for output_sig in g.signals:
+                    if output_sig.name in content:
+                        report.add_check("behavioral", "direct_signal_mapping_signal_refs", "PASS",
+                                         f"Output signal '{output_sig.name}' referenced in code")
+                    else:
+                        report.add_check("behavioral", "direct_signal_mapping_signal_refs", "FAIL",
+                                         f"Output signal '{output_sig.name}' not found in code")
+                        all_pass = False
 
     # For behavioral verification, we mark dynamic checks as SKIP
     # since we can't execute the code in this fallback mode

@@ -60,8 +60,9 @@ def run_composition_checks(
     # Check 3: no_pattern_conflicts
     signal_writers = {}  # signal_name → [(handler_name, pattern)]
     for h in ir.handlers:
-        for s in h.output_signals:
-            signal_writers.setdefault(s.name, []).append((h.name, h.pattern))
+        for g in h.output_groups:
+            for s in g.signals:
+                signal_writers.setdefault(s.name, []).append((h.name, h.pattern))
 
     conflicts = {}
     for signal, writers in signal_writers.items():
@@ -167,7 +168,7 @@ def run_composition_checks(
 
     # Check 7: input_namespace_not_output (for same handler)
     for h in ir.handlers:
-        if h.input_namespace == h.output_namespace:
+        if h.output_groups and h.input_namespace == h.output_groups[0].namespace:
             # Check if the namespace role is "both" — that's OK
             ns = next(n for n in ir.namespaces if n.name == h.input_namespace)
             if ns.role != "both":

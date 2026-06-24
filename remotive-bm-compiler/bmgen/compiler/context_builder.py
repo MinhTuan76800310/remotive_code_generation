@@ -169,9 +169,39 @@ def _merge_recipe_context(
 ) -> dict:
     """Merge a recipe context with handler IR data and namespace lookups.
 
-    This fills in the output_namespace_var and other namespace-dependent
-    fields that the recipe cannot know on its own.
+    Produces the per-handler template context consumed by handler_*.py.j2:
+
+    - `output_groups` (list of {namespace, namespace_var, signals}) is the
+      canonical multi-output shape. Every handler template iterates this and
+      emits one update_signals() call per group.
+    - For the common single-output case, recipes that still expect flat
+      `output_tuples` (e.g. DirectSignalMapping, ThresholdMapping) get a
+      reconstructed flat list from output_groups[0] — keeps the existing
+      recipe `build_context()` byte-identical.
+    - `output_namespace_var` is kept (single-output field) for templates that
+      pre-date the multi-output refactor; it's sourced from output_groups[0]
+      when there is exactly one group, else empty.
     """
+    output_groups_ctx = []
+    for g in handler_ir.output_groups:
+        output_groups_ctx.append({
+            "namespace": g.namespace,
+            "namespace_var": ns_var_lookup.get(g.namespace, ""),
+            "signals": [
+                {"name": s.name, "value_expr": s.value_expr} for s in g.signals
+            ],
+        })
+
+    # Single-output shortcut fields (used by recipes/templates that haven't
+    # been refactored to loop over output_groups yet).
+    first_ns = handler_ir.output_groups[0].namespace if handler_ir.output_groups else ""
+    first_ns_var = ns_var_lookup.get(first_ns, "")
+    first_signals = (
+        [{"name": s.name, "value_expr": s.value_expr}
+         for s in handler_ir.output_groups[0].signals]
+        if handler_ir.output_groups else []
+    )
+
     ctx = {
         "name": handler_ir.name,
         "pattern": handler_ir.pattern,
@@ -180,17 +210,28 @@ def _merge_recipe_context(
         "input_namespace": handler_ir.input_namespace,
         "input_namespace_var": ns_var_lookup.get(handler_ir.input_namespace, ""),
         "input_frame_filter": handler_ir.input_frame_filter,
-        "output_namespace": handler_ir.output_namespace,
-        "input_signals": [{"name": s.name, "python_var_name": s.python_var_name} for s in handler_ir.input_signals],
-        "output_signals": [{"name": s.name, "value_expr": s.value_expr} for s in handler_ir.output_signals],
+        "input_signals": [
+            {"name": s.name, "python_var_name": s.python_var_name}
+            for s in handler_ir.input_signals
+        ],
+        # Canonical multi-output shape (used by the inline-branched templates
+        # and by novel_logic stubs).
+        "output_groups": output_groups_ctx,
+        # Single-output shortcut fields (kept for templates that still expect them).
+        "output_namespace": first_ns,
+        "output_namespace_var": first_ns_var,
+        "output_signals": first_signals,
+        # Reconstructed flat (name, value_expr) tuples for backward-compatible
+        # recipe templates — same shape recipe.build_context() has always emitted.
+        "output_tuples": [(s["name"], s["value_expr"]) for s in first_signals],
     }
 
-    # Fill in output_namespace_var from recipe context or namespace lookup
-    output_ns_var = recipe_ctx.context.get("output_namespace_var", "") or ns_var_lookup.get(handler_ir.output_namespace, "")
-    recipe_ctx.context["output_namespace_var"] = output_ns_var
-    ctx["output_namespace_var"] = output_ns_var
-
-    # Merge all recipe-specific context fields
+    # Merge all recipe-specific context fields (recipe_ctx.context["output_namespace_var"]
+    # is the recipe's own output-var; the resolved ns_var_lookup value above wins).
+    if "output_namespace_var" in recipe_ctx.context:
+        # Only overwrite if the recipe didn't set it; otherwise trust the recipe.
+        if not recipe_ctx.context["output_namespace_var"]:
+            recipe_ctx.context["output_namespace_var"] = first_ns_var
     ctx.update(recipe_ctx.context)
 
     return ctx
@@ -198,6 +239,20 @@ def _merge_recipe_context(
 
 def _build_novel_logic_context(handler_ir: HandlerIR, ns_var_lookup: dict[str, str]) -> dict:
     """Build context for a novel_logic stub handler."""
+    output_groups_ctx = []
+    for g in handler_ir.output_groups:
+        output_groups_ctx.append({
+            "namespace": g.namespace,
+            "namespace_var": ns_var_lookup.get(g.namespace, ""),
+            "signals": [
+                {"name": s.name, "value_expr": s.value_expr} for s in g.signals
+            ],
+        })
+
+    # Single-output shortcut fields (mirrors _merge_recipe_context).
+    first_ns = handler_ir.output_groups[0].namespace if handler_ir.output_groups else ""
+    first_ns_var = ns_var_lookup.get(first_ns, "")
+
     return {
         "name": handler_ir.name,
         "pattern": handler_ir.pattern,
@@ -206,10 +261,14 @@ def _build_novel_logic_context(handler_ir: HandlerIR, ns_var_lookup: dict[str, s
         "input_namespace": handler_ir.input_namespace,
         "input_namespace_var": ns_var_lookup.get(handler_ir.input_namespace, ""),
         "input_frame_filter": handler_ir.input_frame_filter,
-        "output_namespace": handler_ir.output_namespace,
-        "output_namespace_var": ns_var_lookup.get(handler_ir.output_namespace, ""),
+        "output_groups": output_groups_ctx,
+        "output_namespace": first_ns,
+        "output_namespace_var": first_ns_var,
         "input_signals": [{"name": s.name, "python_var_name": s.python_var_name} for s in handler_ir.input_signals],
-        "output_signals": [{"name": s.name, "value_expr": s.value_expr} for s in handler_ir.output_signals],
+        "output_signals": [
+            {"name": s.name, "value_expr": s.value_expr}
+            for s in (handler_ir.output_groups[0].signals if handler_ir.output_groups else [])
+        ],
     }
 
 

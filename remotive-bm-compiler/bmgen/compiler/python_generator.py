@@ -145,11 +145,15 @@ def _indent_body(body: str, indent: int = 4) -> str:
 
 
 def _render_novel_logic_handler(handler: dict) -> str:
-    """Render a novel_logic stub handler."""
+    """Render a novel_logic stub handler.
+
+    Prints every output_group in the `# output:` comment so the hand-filler
+    sees the full multi-output wiring (each group → its namespace and signals).
+    """
     name = handler.get("name", handler.get("handler_name", ""))
     pattern = handler.get("pattern", "Unknown")
     input_signals = handler.get("input_signals", [])
-    output_signals = handler.get("output_signals", [])
+    output_groups = handler.get("output_groups", [])
 
     lines = [
         f"    async def {name}(self, frame: Frame) -> None:",
@@ -158,9 +162,20 @@ def _render_novel_logic_handler(handler: dict) -> str:
     ]
     if input_signals:
         lines.append(f"        # input: {input_signals[0]['name']} from {handler.get('input_namespace', '')}")
-    if output_signals:
-        output_names = [s['name'] for s in output_signals]
-        lines.append(f"        # output: {', '.join(output_names)} to {handler.get('output_namespace', '')}")
+    if output_groups:
+        if len(output_groups) == 1:
+            # Single group — preserve the old compact comment form.
+            g = output_groups[0]
+            sig_names = [s['name'] for s in g.get('signals', [])]
+            lines.append(f"        # output: {', '.join(sig_names)} to {g.get('namespace', '')}")
+        else:
+            # Multi-group — one comment line per group so each namespace/signal
+            # pairing is visible to the hand-filler.
+            for g in output_groups:
+                sig_names = [s['name'] for s in g.get('signals', [])]
+                lines.append(
+                    f"        # output group: [{', '.join(sig_names)}] → {g.get('namespace', '')}"
+                )
     lines.append("        pass")
 
     return "\n".join(lines)

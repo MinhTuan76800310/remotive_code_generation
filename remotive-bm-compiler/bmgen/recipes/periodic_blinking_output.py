@@ -49,10 +49,13 @@ class PeriodicBlinkingOutputRecipe(Recipe):
                 f"found {len(handler_ir.input_signals)}"
             )
 
-        if len(handler_ir.output_signals) < 1:
+        flat_output_signals = [
+            sig for g in handler_ir.output_groups for sig in g.signals
+        ]
+        if len(flat_output_signals) < 1:
             errors.append(
                 f"PeriodicBlinkingOutput requires at least 1 output signal, "
-                f"found {len(handler_ir.output_signals)}"
+                f"found {len(flat_output_signals)}"
             )
 
         if handler_ir.state is None:
@@ -103,10 +106,15 @@ class PeriodicBlinkingOutputRecipe(Recipe):
         state = handler_ir.state
         periodic = handler_ir.periodic_task
 
-        # Build output tuples for the handler (enable/disable state)
-        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        # Build output tuples for the handler (enable/disable state, flattened).
+        output_tuples = [
+            (s.name, s.value_expr)
+            for g in handler_ir.output_groups
+            for s in g.signals
+        ]
 
-        # Build blink output signal names for the periodic task
+
+# Type hint for HandlerIR — keeps existing imports working        # Build blink output signal names for the periodic task
         blink_signal_names = periodic.blink_output_signals if periodic else []
 
         # Ticker variable name

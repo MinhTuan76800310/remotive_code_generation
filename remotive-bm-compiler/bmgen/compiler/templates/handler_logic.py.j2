@@ -1,3 +1,18 @@
+{% if output_groups|length > 1 %}
+{# Multi-output logic: read N inputs, then one restbus.update_signals() call per group. #}
+async def {{ handler_name }}(self, frame: Frame) -> None:
+{% for input_ref, input_var in input_tuples %}
+    {{ input_var }} = frame.signals["{{ input_ref }}"]
+{% endfor %}
+{% for group in output_groups %}
+    await self.{{ group.namespace_var }}.restbus.update_signals(
+{% for signal in group.signals %}
+        ("{{ signal.name }}", {{ signal.value_expr }}),
+{% endfor %}
+    )
+{% endfor %}
+{% else %}
+{# Single-output: byte-identical to pre-multi-output rendering. #}
 async def {{ handler_name }}(self, frame: Frame) -> None:
 {% for input_ref, input_var in input_tuples %}
     {{ input_var }} = frame.signals["{{ input_ref }}"]
@@ -7,3 +22,4 @@ async def {{ handler_name }}(self, frame: Frame) -> None:
         ("{{ signal_name }}", {{ value_expr }}),
 {% endfor %}
     )
+{% endif %}

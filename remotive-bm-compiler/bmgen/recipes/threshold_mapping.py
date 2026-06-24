@@ -101,16 +101,23 @@ class ThresholdMappingRecipe(Recipe):
         """
         errors = []
 
+        # Flatten the multi-output IR shape into a flat output-signal list for
+        # backward-compatible validation logic. ThresholdMapping cares about
+        # count and value_exprs, not which namespace they go to.
+        flat_output_signals = [
+            sig for g in handler_ir.output_groups for sig in g.signals
+        ]
+
         if len(handler_ir.input_signals) != 1:
             errors.append(
                 f"ThresholdMapping requires exactly 1 input signal, "
                 f"found {len(handler_ir.input_signals)}"
             )
 
-        if len(handler_ir.output_signals) < 1:
+        if len(flat_output_signals) < 1:
             errors.append(
                 f"ThresholdMapping requires at least 1 output signal, "
-                f"found {len(handler_ir.output_signals)}"
+                f"found {len(flat_output_signals)}"
             )
 
         if handler_ir.state is not None:
@@ -184,7 +191,16 @@ class ThresholdMappingRecipe(Recipe):
         input_var = input_signal.python_var_name
         input_ref = input_signal.name
 
-        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        # Flatten output_groups into a single (name, value_expr) tuple list.
+        # The same value_expr fans out across all groups in the IR (see
+        # _apply_value_exprs), so grouping by namespace here is unnecessary —
+        # the template's inline multi-output branch handles the fan-out
+        # separately from output_tuples.
+        output_tuples = [
+            (s.name, s.value_expr)
+            for g in handler_ir.output_groups
+            for s in g.signals
+        ]
 
         return RecipeContext(
             handler_name=handler_ir.name,

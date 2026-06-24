@@ -76,6 +76,32 @@ class OutputSignalIR:
 
 
 @dataclass
+class OutputGroupIR:
+    """One output binding: write the recipe's value_expr to these signals on this namespace.
+
+    A handler may write to one or more output namespaces. Each OutputGroupIR
+    binds a (namespace, signals) pair. The recipe's output_value_expr() returns
+    a single expression that is fanned out to every signal across every group.
+
+    Example (ThresholdMapping with two outputs):
+        handler.output_groups = [
+            OutputGroupIR(namespace="SEAT-CpdCan0", signals=[
+                OutputSignalIR(name="SeatInput.SeatOccupied"),
+            ]),
+            OutputGroupIR(namespace="SEAT-CpdCan1", signals=[
+                OutputSignalIR(name="SeatInput.SeatOccupiedBackup"),
+            ]),
+        ]
+
+    This produces two update_signals() calls in the generated Python, one per
+    group. The validator enforces that every OutputGroupIR.namespace resolves
+    to an inferred NamespaceIR.
+    """
+    namespace: str
+    signals: list[OutputSignalIR] = field(default_factory=list)
+
+
+@dataclass
 class StateIR:
     """A state variable owned by a handler.
 
@@ -134,8 +160,13 @@ class HandlerIR:
     input_namespace: str = ""  # Must reference existing NamespaceIR.name
     input_frame_filter: str = ""  # Frame name for FrameFilter
     input_signals: list[InputSignalIR] = field(default_factory=list)
-    output_namespace: str = ""  # Must reference output NamespaceIR.name
-    output_signals: list[OutputSignalIR] = field(default_factory=list)
+    # Output is a list of (namespace, signals) groups. One handler may write
+    # to multiple output buses (e.g. publish a computed value to both the
+    # primary CAN bus and a redundant backup bus). The recipe's value_expr
+    # fans out to every signal across all groups; generated Python calls
+    # restbus.update_signals() once per group. For single-output handlers
+    # (the common case), output_groups has exactly one entry.
+    output_groups: list[OutputGroupIR] = field(default_factory=list)
     state: StateIR | None = None  # Optional state variable
     periodic_task: PeriodicTaskIR | None = None  # Optional periodic task
     threshold: float | None = None  # Optional threshold for ThresholdMapping

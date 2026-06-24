@@ -112,7 +112,7 @@ def run_structural_checks(
         all_pass = False
 
     # Check 7: output_has_restbus
-    output_ns_names = {h.output_namespace for h in ir.handlers}
+    output_ns_names = {g.namespace for h in ir.handlers for g in h.output_groups if g.namespace}
     output_ns_with_restbus = _find_restbus_configs(content, output_ns_names)
     all_output_have_restbus = all(ns in output_ns_with_restbus for ns in output_ns_names)
     if all_output_have_restbus:

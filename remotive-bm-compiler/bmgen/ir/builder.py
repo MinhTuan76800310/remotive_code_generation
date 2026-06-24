@@ -14,6 +14,7 @@ from bmgen.ir.model import (
     HandlerIR,
     InputSignalIR,
     NamespaceIR,
+    OutputGroupIR,
     OutputSignalIR,
     PeriodicTaskIR,
     ResetHandlerIR,
@@ -21,7 +22,7 @@ from bmgen.ir.model import (
     StateIR,
     WebsocketListenerIR,
 )
-from bmgen.ir.validators import ValidationViolation, has_errors, validate
+from bmgen.ir.validators import ValidationViolation, has_errors, validate, validate_namespace_types
 
 
 class BuilderError(Exception):
@@ -56,20 +57,54 @@ def build_ir(spec: dict) -> BehavioralModelIR:
     if not model_name or not ecu_name:
         raise ValueError("Model section must contain 'name' and 'ecu_name'")
 
-    # Build namespaces
-    namespace_specs = spec.get("namespaces", [])
-    namespaces = _build_namespaces(namespace_specs)
-
     # Build handlers
     handler_specs = spec.get("handlers", [])
     handlers = _build_handlers(handler_specs)
 
-    # Build reset handler
-    reset_handler = _build_reset_handler(spec, handlers)
-
     # Build model-level websocket listeners (external ws → CAN restbus).
     # Sibling to handlers — NOT inside handlers[]; a listener has no CAN frame.
     websocket_listeners = _build_websocket_listeners(spec.get("websocket_listeners", []))
+
+    # Backward-compat: if the old top-level `namespaces:` key is present alongside
+    # (or instead of) `namespace_types:`, warn and (only if no `namespace_types:`)
+    # still validate the user didn't drift. Inference below does not depend on
+    # the old key — every namespace is reconstructed from handler/ws refs.
+    if "namespaces" in spec:
+        import warnings
+        warnings.warn(
+            "Top-level `namespaces:` is deprecated and ignored; use `namespace_types:` "
+            "(map of name → type). Namespaces are now inferred from handler/ws "
+            "references. Remove `namespaces:` from this spec.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        # Reject duplicates in the old block up-front. Inference won't see them
+        # (the block is ignored) and Invariant 1 only inspects the inferred IR,
+        # so without this check a malformed deprecated spec would silently pass.
+        old_names = [ns.get("name") for ns in spec["namespaces"] if ns.get("name")]
+        dupes = sorted({n for n in old_names if old_names.count(n) > 1})
+        if dupes:
+            raise BuilderError([
+                ValidationViolation(
+                    rule="namespace_names_unique",
+                    message=(
+                        f"Duplicate namespace names in deprecated `namespaces:` block: "
+                        f"{dupes}. Remove duplicates or migrate to `namespace_types:` "
+                        f"(deduped by key)."
+                    ),
+                )
+            ])
+
+    # Infer namespaces from handler/ws references and the `namespace_types:` map.
+    namespaces = _infer_namespaces(spec, handlers, websocket_listeners, ecu_name)
+
+    # Build reset handler (uses inferred namespaces, not spec["namespaces"]).
+    reset_handler = _build_reset_handler(
+        explicit_reset=spec.get("reset_handler", False),
+        handlers=handlers,
+        namespaces=namespaces,
+    )
 
     # Collect novel_logic handler names
     novel_logic_handlers = [h.name for h in handlers if h.novel_logic]
@@ -85,8 +120,10 @@ def build_ir(spec: dict) -> BehavioralModelIR:
         websocket_listeners=websocket_listeners,
     )
 
-    # Validate the IR
-    violations = validate(ir)
+    # Validate the IR — first the namespace_types map (needs raw spec), then the IR itself.
+    namespace_type_violations = validate_namespace_types(spec, ir)
+    ir_violations = validate(ir)
+    violations = namespace_type_violations + ir_violations
     if has_errors(violations):
         raise BuilderError(violations)
 
@@ -96,35 +133,66 @@ def build_ir(spec: dict) -> BehavioralModelIR:
     return ir
 
 
-def _build_namespaces(namespace_specs: list[dict]) -> list[NamespaceIR]:
-    """Build NamespaceIR objects from raw namespace spec dicts."""
-    namespaces = []
-    for ns_spec in namespace_specs:
-        name = ns_spec.get("name")
+def _infer_namespaces(
+    spec: dict,
+    handlers: list[HandlerIR],
+    ws_listeners: list[WebsocketListenerIR],
+    ecu_name: str,
+) -> list[NamespaceIR]:
+    """Infer NamespaceIRs from handler/ws references and the namespace_types map.
+
+    The new schema (`namespace_types:`) is a flat map of name → type. The old
+    `namespaces:` list is deprecated and ignored at this stage (the warning is
+    emitted in build_ir before this call).
+
+    Inference rules:
+    1. Collect refs: every handler's input_namespace is a name + 'as_input'
+       mark; every output_group.namespace and every ws.output_namespace is a
+       name + 'as_output' mark.
+    2. role:  'both' if both as_input and as_output; 'input' if only as_input;
+              'output' if only as_output.
+    3. restbus: auto-created (RestbusConfigIR(sender_filter=ecu_name)) iff role
+       is 'output' or 'both'. Validators enforce strict-required presence in
+       `namespace_types:` for every ref and reject unknown type values.
+    """
+    type_map: dict[str, str] = spec.get("namespace_types", {}) or {}
+
+    refs: dict[str, dict[str, bool]] = {}
+
+    def _mark(name: str, kind: str) -> None:
         if not name:
-            raise ValueError("Each namespace must have a 'name' field")
+            return
+        r = refs.setdefault(name, {"as_input": False, "as_output": False})
+        r[kind] = True
 
-        type_ = ns_spec.get("type", "can")
-        role = ns_spec.get("role", "input")
+    for h in handlers:
+        _mark(h.input_namespace, "as_input")
+        for g in h.output_groups:
+            _mark(g.namespace, "as_output")
+    for ws in ws_listeners:
+        _mark(ws.output_namespace, "as_output")
 
-        restbus_spec = ns_spec.get("restbus")
-        restbus_ir = None
-        if restbus_spec:
-            restbus_ir = RestbusConfigIR(
-                sender_filter=restbus_spec.get("sender_filter", ""),
-            )
-
-        namespaces.append(
+    result: list[NamespaceIR] = []
+    for name, flags in refs.items():
+        role = (
+            "both" if flags["as_input"] and flags["as_output"]
+            else "input" if flags["as_input"]
+            else "output"
+        )
+        restbus_ir = (
+            RestbusConfigIR(sender_filter=ecu_name)
+            if role in ("output", "both")
+            else None
+        )
+        result.append(
             NamespaceIR(
                 name=name,
-                type=type_,
+                type=type_map.get(name, "can"),
                 role=role,
                 restbus=restbus_ir,
-                client_id=ns_spec.get("client_id"),
-                interface_name=ns_spec.get("interface_name"),
             )
         )
-    return namespaces
+    return result
 
 
 def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
@@ -158,11 +226,30 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
         input_signals = [InputSignalIR(name=s) for s in input_signal_names]
         _ensure_unique_var_names(input_signals)
 
-        # Output
-        output_spec = h_spec.get("output", {})
-        output_namespace = output_spec.get("namespace", "")
-        output_signal_names = output_spec.get("signals", [])
-        output_signals = [OutputSignalIR(name=s) for s in output_signal_names]
+        # Output — accepted as either a list of {namespace, signals} groups
+        # (new schema) or a single {namespace, signals} dict (old schema,
+        # wrapped into a one-element list for migration back-compat).
+        output_spec = h_spec.get("output", [])
+        if isinstance(output_spec, dict):
+            output_specs = [output_spec]
+        elif isinstance(output_spec, list):
+            output_specs = output_spec
+        else:
+            raise ValueError(
+                f"Handler '{name}' output must be a list of {{namespace, signals}} "
+                f"groups (or a single dict for back-compat); got {type(output_spec).__name__}"
+            )
+
+        output_groups: list[OutputGroupIR] = []
+        for group_spec in output_specs:
+            group_ns = group_spec.get("namespace", "")
+            group_signal_names = group_spec.get("signals", [])
+            output_groups.append(
+                OutputGroupIR(
+                    namespace=group_ns,
+                    signals=[OutputSignalIR(name=s) for s in group_signal_names],
+                )
+            )
 
         # State
         state_spec = h_spec.get("state")
@@ -181,9 +268,14 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
         periodic_ir = None
         if periodic_spec:
             blink_output_spec = periodic_spec.get("blink_output", {})
+            # Fall back to the first output group's namespace if the blink
+            # output namespace wasn't specified explicitly.
+            default_ns = (
+                output_groups[0].namespace if output_groups else ""
+            )
             periodic_ir = PeriodicTaskIR(
                 interval_sec=periodic_spec.get("interval_sec", 1.0),
-                blink_output_namespace=blink_output_spec.get("namespace", output_namespace),
+                blink_output_namespace=blink_output_spec.get("namespace", default_ns),
                 blink_output_signals=blink_output_spec.get("signals", []),
                 cleanup=periodic_spec.get("cleanup", False),
             )
@@ -204,8 +296,7 @@ def _build_handlers(handler_specs: list[dict]) -> list[HandlerIR]:
                 input_namespace=input_namespace,
                 input_frame_filter=input_frame_filter,
                 input_signals=input_signals,
-                output_namespace=output_namespace,
-                output_signals=output_signals,
+                output_groups=output_groups,
                 state=state_ir,
                 periodic_task=periodic_ir,
                 threshold=threshold,
@@ -257,7 +348,11 @@ def _camel_to_snake(name: str) -> str:
     return "".join(result)
 
 
-def _build_reset_handler(spec: dict, handlers: list[HandlerIR]) -> ResetHandlerIR | None:
+def _build_reset_handler(
+    explicit_reset: bool,
+    handlers: list[HandlerIR],
+    namespaces: list[NamespaceIR],
+) -> ResetHandlerIR | None:
     """Build a ResetHandlerIR if the spec requests it or if any handler needs reset.
 
     A reset handler is auto-generated when:
@@ -265,18 +360,20 @@ def _build_reset_handler(spec: dict, handlers: list[HandlerIR]) -> ResetHandlerI
     - Any handler has a state with a reset_value
 
     The reset handler resets all owned state variables and calls
-    restbus.reset() on all output namespaces.
+    restbus.reset() on all output namespaces (role 'output' or 'both').
+
+    The `namespaces` arg is the *inferred* list of NamespaceIRs (from
+    `_infer_namespaces`); the deprecated `spec["namespaces"]` is no longer
+    read here — output namespaces come from role inference alone.
     """
-    explicit_reset = spec.get("reset_handler", False)
-
     # Collect all states that have reset values
-    states_with_reset = [h.state for h in handlers if h.state is not None and h.state.reset_value is not None]
+    states_with_reset = [
+        h.state for h in handlers
+        if h.state is not None and h.state.reset_value is not None
+    ]
 
-    # Collect all output namespace names
-    output_ns_names = []
-    for ns_spec in spec.get("namespaces", []):
-        if ns_spec.get("role") in ("output", "both") and ns_spec.get("restbus"):
-            output_ns_names.append(ns_spec.get("name"))
+    # Collect all output namespace names from inferred IR
+    output_ns_names = [ns.name for ns in namespaces if ns.role in ("output", "both")]
 
     if explicit_reset or states_with_reset:
         return ResetHandlerIR(
@@ -318,9 +415,11 @@ def _build_websocket_listeners(ws_specs: list[dict]) -> list[WebsocketListenerIR
 def _apply_value_exprs(ir: BehavioralModelIR) -> None:
     """Apply recipe-derived value expressions to output signals.
 
-    This step fills in the `value_expr` field on OutputSignalIR. The expression
-    is owned by each recipe via Recipe.output_value_expr(), so adding a new
-    pattern requires no edit here — the registry is the single source of truth.
+    This step fills in the `value_expr` field on every OutputSignalIR across
+    every output_group. The expression is owned by each recipe via
+    Recipe.output_value_expr(); a single expression fans out to every signal
+    in every group. Adding a new pattern requires no edit here — the registry
+    is the single source of truth.
 
     novel_logic handlers are skipped (they generate stubs with no logic).
     Unknown patterns are left with empty value_exprs; validators reject them
@@ -340,5 +439,6 @@ def _apply_value_exprs(ir: BehavioralModelIR) -> None:
             continue
 
         value_expr = recipe.output_value_expr(handler)
-        for output_signal in handler.output_signals:
-            output_signal.value_expr = value_expr
+        for group in handler.output_groups:
+            for output_signal in group.signals:
+                output_signal.value_expr = value_expr

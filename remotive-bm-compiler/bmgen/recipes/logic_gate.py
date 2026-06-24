@@ -80,10 +80,13 @@ class LogicGateRecipe(Recipe):
                     f"{self._name} requires at least 2 input signals, found {n_inputs}"
                 )
 
-        if len(handler_ir.output_signals) < 1:
+        flat_output_signals = [
+            sig for g in handler_ir.output_groups for sig in g.signals
+        ]
+        if len(flat_output_signals) < 1:
             errors.append(
                 f"{self._name} requires at least 1 output signal, "
-                f"found {len(handler_ir.output_signals)}"
+                f"found {len(flat_output_signals)}"
             )
 
         if handler_ir.state is not None:
@@ -135,7 +138,12 @@ class LogicGateRecipe(Recipe):
         - output_namespace_var: filled in by context_builder
         """
         input_tuples = [(s.name, s.python_var_name) for s in handler_ir.input_signals]
-        output_tuples = [(s.name, s.value_expr) for s in handler_ir.output_signals]
+        # Flatten output_groups — see DirectSignalMapping/ThresholdMapping for rationale.
+        output_tuples = [
+            (s.name, s.value_expr)
+            for g in handler_ir.output_groups
+            for s in g.signals
+        ]
 
         return RecipeContext(
             handler_name=handler_ir.name,
