@@ -27,30 +27,27 @@
 #   so it raises yaml.YAMLError at parse time, before ThresholdMapping can
 #   report a friendly error. Omitting operator entirely is also valid (→ '>').
 #
+# Schema: namespace_types: (service_oriented) — flat map of name → type.
+# Role + restbus are inferred from handler references. SEAT-CpdCan0 is used
+# as both input and output (role: both) and gets an auto-created restbus
+# with sender_filter = "SEAT". The legacy top-level `namespaces:` block is
+# gone; SEAT-CpdCan1 (which was declared but never referenced — drift) is
+# removed, so a user can no longer declare an unused namespace by accident.
+#
+# Output: 1-element list (multi-output syntax). The current handler has one
+# output group, but using the list form keeps the file shape uniform with
+# handlers that fan out to multiple namespaces (see new_schema.yaml).
+#
 # CAN out: SeatOccupied → arrow a_seat → CentralHPC
 #   (consumed by CentralHPC's Child Detection Logic: AND with ChildDetectedByCamera)
 
 model:
   name: SeatECU
   ecu_name: SEAT
-# change:
-#       role --> I/O
 
-namespaces:
-  # All CAN on the shared CpdCan0 channel.
-  # role: both — SEAT both receives SeatWeightSensor (local sensor) and
-  # transmits SeatInput (SeatOccupied) on the same physical bus.
-  - name: SEAT-CpdCan0
-    type: can
-    role: both
-    restbus:
-      sender_filter: SEAT
-  - name: SEAT-CpdCan1
-    type: can
-    role: input
-    restbus:
-      sender_filter: SEAT
-      
+namespace_types:
+  SEAT-CpdCan0: can
+
 handlers:
   # Local seat weight (kg) → threshold rule → publish SeatOccupied (CAN signal a_seat).
   # Rule (author): seat_occupied = False if weight_kg >= 8 else True
@@ -65,6 +62,6 @@ handlers:
       frame_filter: SeatWeightSensor
       signal: SeatWeightSensor.WeightKg
     output:
-      namespace: SEAT-CpdCan0
-      signals:
-        - SeatInput.SeatOccupied
+      - namespace: SEAT-CpdCan0
+        signals:
+          - SeatInput.SeatOccupied

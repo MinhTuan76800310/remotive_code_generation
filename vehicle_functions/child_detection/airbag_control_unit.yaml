@@ -6,20 +6,18 @@
 # Role: publish current airbag status to CentralHPC; receive the airbag control
 #       command from CentralHPC and apply it to the local restraint actuator.
 # Design: Simulation ECU — DirectSignalMapping for both directions.
+#
+# Schema: namespace_types: (service_oriented) — flat map of name → type.
+# Role + restbus are inferred from handler references. AIRBAG-CpdCan0 is
+# used as both input and output (role: both) and gets an auto-created
+# restbus with sender_filter = "AIRBAG".
 
 model:
   name: AirbagControlUnit
   ecu_name: AIRBAG
 
-namespaces:
-  # All CAN on the shared CpdCan0 channel.
-  # role: both — AIRBAG reads AirbagStatusSensor and AirbagControlCommand, and
-  # writes AirbagStatusReport and AirbagActuatorState, all on the same physical bus.
-  - name: AIRBAG-CpdCan0
-    type: can
-    role: both
-    restbus:
-      sender_filter: AIRBAG
+namespace_types:
+  AIRBAG-CpdCan0: can
 
 handlers:
   # Local airbag status → publish AirbagStatusReport to CentralHPC
@@ -30,9 +28,9 @@ handlers:
       frame_filter: AirbagStatusSensor
       signal: AirbagStatusSensor.AirbagStatus
     output:
-      namespace: AIRBAG-CpdCan0
-      signals:
-        - AirbagStatusReport.AirbagStatus
+      - namespace: AIRBAG-CpdCan0
+        signals:
+          - AirbagStatusReport.AirbagStatus
 
   # AirbagControlCommand from CentralHPC → apply to local restraint actuator
   - name: on_airbag_control_command
@@ -42,6 +40,6 @@ handlers:
       frame_filter: AirbagControlCommand
       signal: AirbagControlCommand.AirbagControlCommand
     output:
-      namespace: AIRBAG-CpdCan0
-      signals:
-        - AirbagActuatorState.AirbagActuated
+      - namespace: AIRBAG-CpdCan0
+        signals:
+          - AirbagActuatorState.AirbagActuated

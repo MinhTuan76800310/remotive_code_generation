@@ -1,16 +1,45 @@
+# DriverMonitoringECU — Child Detection by Camera (external websocket → CAN restbus)
+# Source diagram: CAD_ECU_architecture.drawio — page 2 "ECU CAN I/O", node "dms-box"
 #   Function: "Read camera child detection, at websocket local:1122
 #              → publish ChildDetectedByCamera"
+#
+# Semantics:
+#   The camera child-detection result is NOT a Remotive CAN signal. It arrives
+#   from an OUTSIDE service — a camera streamer exposing a websocket at
+#   ws://localhost:1122. The ECU bridges that external stream onto the Remotive
+#   CAN restbus: it reads each JSON message from the websocket and publishes the
+#   value as the boolean ChildDetectedByCamera onto the shared child-detection
+#   input frame consumed by CentralHPC (arrow a_dms).
+#
+# Why a model-level websocket_listener, not a handler:
+#   Every handler in a Remotive behavioral model is triggered by an incoming CAN
+#   frame (create_input_handler + FrameFilter). A websocket has no CAN frame, so
+#   it cannot be a handler. Instead a websocket listener is a long-running
+#   background asyncio task — the same category as the blink ticker — launched
+#   at model startup inside the BehavioralModel context and cancelled on exit.
+#   Therefore `websocket_listeners:` is a TOP-LEVEL section, sibling to
+#   `handlers:`, and this ECU has `handlers: []`.
+#
+# Recipe: WebsocketBridge  (added to the remotive-bm-compiler recipe registry)
+#   - Message format : JSON text frames. Each message is json.loads'd; the value
+#                      at ws_key is forwarded to the mapped restbus signal.
+#   - Reconnect      : on disconnect/error, log a warning and reconnect forever
+#                      after reconnect_delay_sec (default 2.0s).
+#   - Lifecycle      : task is cancelled on model exit / reboot (cleanup: true).
+#
+# CAN out: ChildDetectedByCamera → arrow a_dms → CentralHPC
+#   (consumed by CentralHPC's Child Detection Logic: AND with SeatOccupied)
+#
+# Schema: namespace_types: (service_oriented) — flat map of name → type.
+# DMS-CpdCan0 is referenced only by the websocket listener (output_namespace)
+# so it's role: output with auto-created restbus.
 
 model:
   name: DriverMonitoringECU
   ecu_name: DMS
 
-namespaces:
-  - name: DMS-CpdCan0
-    type: can
-    role: output
-    restbus:
-      sender_filter: DMS
+namespace_types:
+  DMS-CpdCan0: can
 
 # Model-level websocket listeners (external transport → Remotive CAN restbus).
 # Each listener runs a background asyncio task for the ECU's whole lifetime.

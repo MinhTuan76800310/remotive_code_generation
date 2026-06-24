@@ -12,17 +12,18 @@
 #
 # Design: Simulation ECU — stateful fusion (novel_logic) for child detection,
 #          DirectSignalMapping for driver-decision routing.
+#
+# Schema: namespace_types: (service_oriented) — flat map of name → type.
+# Role + restbus are inferred from handler references. CENTRAL-CpdCan0 is
+# used as both input and output (role: both) and gets an auto-created
+# restbus with sender_filter = "CENTRAL".
 
 model:
   name: CentralHPC
   ecu_name: CENTRAL
 
-namespaces:
-  - name: CENTRAL-CpdCan0
-    type: can
-    role: both
-    restbus:
-      sender_filter: CENTRAL
+namespace_types:
+  CENTRAL-CpdCan0: can
 
 handlers:
   # ── Section 1: Child Detection Logic (stateful fusion across two frames) ──
@@ -37,14 +38,14 @@ handlers:
     #   type: bool
     #   initial: false
     #   owner: on_seat_update
-    # input:
-    #   namespace: CENTRAL-CpdCan0
-    #   frame_filter: SeatInput
-    #   signal: SeatInput.SeatOccupied
-    # output:
-    #   namespace: CENTRAL-CpdCan0
-    #   signals:
-    #     - ChildAlert.ChildAlertActive
+    input:
+      namespace: CENTRAL-CpdCan0
+      frame_filter: SeatInput
+      signal: SeatInput.SeatOccupied
+    output:
+      - namespace: CENTRAL-CpdCan0
+        signals:
+          - ChildAlert.ChildAlertActive
 
   # Latch ChildDetectedByCamera from CameraInput, recompute ChildAlertActive.
   - name: on_camera_update
@@ -55,14 +56,14 @@ handlers:
     #   type: bool
     #   initial: false
     #   owner: on_camera_update
-    # input:
-    #   namespace: CENTRAL-CpdCan0
-    #   frame_filter: CameraInput
-    #   signal: CameraInput.ChildDetectedByCamera
-    # output:
-    #   namespace: CENTRAL-CpdCan0
-    #   signals:
-    #     - ChildAlert.ChildAlertActive
+    input:
+      namespace: CENTRAL-CpdCan0
+      frame_filter: CameraInput
+      signal: CameraInput.ChildDetectedByCamera
+    output:
+      - namespace: CENTRAL-CpdCan0
+        signals:
+          - ChildAlert.ChildAlertActive
 
   # ── Section 2: Driver Decision Processing ──
   # IF DriverDecision == TurnAirbagOff THEN generate AirbagControlCommand → AirbagControlUnit
@@ -73,6 +74,6 @@ handlers:
       frame_filter: DriverDecision
       signal: DriverDecision.TurnAirbagOff
     output:
-      namespace: CENTRAL-CpdCan0
-      signals:
-        - AirbagControlCommand.AirbagControlCommand
+      - namespace: CENTRAL-CpdCan0
+        signals:
+          - AirbagControlCommand.AirbagControlCommand
