@@ -1,0 +1,15 @@
+# SWC_driver_decision_routing — forward DriverDecision.TurnAirbagOff as AirbagControlCommand
+# Source: central_hpc.yaml — handler "on_driver_decision"
+# Pattern: DirectSignalMapping — pure CAN→CAN routing, no state.
+
+handlers:
+  - name: on_driver_decision
+    pattern: DirectSignalMapping
+    input:
+      namespace: CENTRAL-CpdCan0
+      frame_filter: DriverDecision
+      signal: DriverDecision.TurnAirbagOff
+    output:
+      - namespace: CENTRAL-CpdCan0
+        signals:
+          - AirbagControlCommand.AirbagControlCommand

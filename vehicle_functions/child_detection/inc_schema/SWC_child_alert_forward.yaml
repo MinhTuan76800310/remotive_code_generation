@@ -1,0 +1,15 @@
+# SWC_child_alert_forward — CentralHPC's ChildAlert → HMI surface
+# Source: cockpit_hmi_ecu.yaml — handler "on_child_alert"
+# Pattern: DirectSignalMapping — pure CAN→CAN routing.
+
+handlers:
+  - name: on_child_alert
+    pattern: DirectSignalMapping
+    input:
+      namespace: COCKPIT-CpdCan0
+      frame_filter: ChildAlert
+      signal: ChildAlert.ChildAlertActive
+    output:
+      - namespace: COCKPIT-CpdCan0
+        signals:
+          - HmiChildWarning.ChildAlertActive

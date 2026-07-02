@@ -1,0 +1,12 @@
+ecu: # ecu 
+  name: SeatECU             
+  broker_name: SEAT             
+
+namespace_types:            
+  SEAT-CpdCan0: can
+
+software_components:        
+  - ./seatECU_softwarecomponent.yaml       
+  # - ./include/seat_occupancy_v2.yaml
+  # - ./include/driver_classification.yaml
+  

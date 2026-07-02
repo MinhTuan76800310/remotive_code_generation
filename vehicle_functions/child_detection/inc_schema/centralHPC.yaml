@@ -1,0 +1,11 @@
+ecu:
+  name: CentralHPC
+  broker_name: CENTRAL
+
+namespace_types:
+  CENTRAL-CpdCan0: can
+
+software_components:
+  - ./SWC_seat_latch.yaml
+  - ./SWC_camera_latch.yaml
+  - ./SWC_driver_decision_routing.yaml

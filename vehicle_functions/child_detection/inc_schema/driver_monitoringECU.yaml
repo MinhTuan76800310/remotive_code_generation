@@ -1,0 +1,9 @@
+ecu:
+  name: DriverMonitoringECU
+  broker_name: DMS
+
+namespace_types:
+  DMS-CpdCan0: can
+
+software_components:
+  - ./SWC_camera_data_preprocessing.yaml

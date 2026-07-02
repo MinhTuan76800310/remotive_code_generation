@@ -1,0 +1,10 @@
+ecu:
+  name: CockpitHMIECU
+  broker_name: COCKPIT
+
+namespace_types:
+  COCKPIT-CpdCan0: can
+
+software_components:
+  - ./SWC_child_alert_forward.yaml
+  - ./SWC_driver_action_publish.yaml

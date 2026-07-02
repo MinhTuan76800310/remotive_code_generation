@@ -1,0 +1,10 @@
+ecu:
+  name: AirbagControlUnit
+  broker_name: AIRBAG
+
+namespace_types:
+  AIRBAG-CpdCan0: can
+
+software_components:
+  - ./SWC_provide_airbag_status.yaml
+  - ./SWC_apply_airbag_control_command.yaml

@@ -1,0 +1,21 @@
+# SWC_camera_latch — latch ChildDetectedByCamera, recompute ChildAlertActive
+# Source: central_hpc.yaml — handler "on_camera_update"
+# Pattern: novel_logic (stateful fusion — sibling of SWC_seat_latch).
+#   ChildPresent = SeatOccupied AND ChildDetectedByCamera
+# This handler owns the `camera_detected` bool slot. Together with
+# SWC_seat_latch, it implements the AND fusion by writing the combined
+# result to ChildAlert.ChildAlertActive.
+# Body is left as a hand-filled stub.
+
+handlers:
+  - name: on_camera_update
+    pattern: CameraLatch
+    novel_logic: true
+    input:
+      namespace: CENTRAL-CpdCan0
+      frame_filter: CameraInput
+      signal: CameraInput.ChildDetectedByCamera
+    output:
+      - namespace: CENTRAL-CpdCan0
+        signals:
+          - ChildAlert.ChildAlertActive
