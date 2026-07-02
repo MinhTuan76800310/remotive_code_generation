@@ -1,14 +1,12 @@
-handlers:      
+handlers:
   - name: Seat_Sensors_Preprocessing
-    pattern: 
-      - name: ThresholdMapping
-        threshold: 8
-        operator: ">="
-        true_when: below
-    consume:
-      namespace: SEAT-CpdCan0     
-      frame_filter: SeatWeightSensor
-      signal: WeightKg 
-    produce:
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: ">="
+    true_when: below
+    input:
+      namespace: SEAT-CpdCan0
+      signal: SeatWeightSensor.WeightKg
+    output:
       - namespace: SEAT-CpdCan0
         signals: [SeatInput.SeatOccupied]

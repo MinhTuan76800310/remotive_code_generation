@@ -1,15 +1,9 @@
-# SWC_apply_airbag_control_command — AirbagControlCommand → local restraint actuator
-# Source: airbag_control_unit.yaml — handler "on_airbag_control_command"
-# Pattern: DirectSignalMapping — pure CAN→CAN routing.
-
 handlers:
-  - name: on_airbag_control_command
+  - name: Apply_Airbag_Control_Command
     pattern: DirectSignalMapping
     input:
       namespace: AIRBAG-CpdCan0
-      frame_filter: AirbagControlCommand
       signal: AirbagControlCommand.AirbagControlCommand
     output:
       - namespace: AIRBAG-CpdCan0
-        signals:
-          - AirbagActuatorState.AirbagActuated
+        signals: [AirbagActuatorState.AirbagActuated]

@@ -1,16 +1,9 @@
-# SWC_driver_action_publish — HMI driver action → publish DriverDecision
-# Source: cockpit_hmi_ecu.yaml — handler "on_driver_action"
-# Pattern: DirectSignalMapping — pure CAN→CAN routing.
-# DriverDecision.TurnAirbagOff is set when the driver chooses "Turn Airbag OFF".
-
 handlers:
-  - name: on_driver_action
+  - name: Driver_Action_Publish
     pattern: DirectSignalMapping
     input:
       namespace: COCKPIT-CpdCan0
-      frame_filter: HmiDriverAction
       signal: HmiDriverAction.TurnAirbagOff
     output:
       - namespace: COCKPIT-CpdCan0
-        signals:
-          - DriverDecision.TurnAirbagOff
+        signals: [DriverDecision.TurnAirbagOff]

@@ -5,6 +5,5 @@ websocket_listeners:
     signal_map:
       - ws_key: ChildDetected
         signal: CameraInput.ChildDetectedByCamera
-    reconnect_delay_sec: 2.0   # backoff between reconnects (default 2.0)
-
+    reconnect_delay_sec: 2.0  
 handlers: []

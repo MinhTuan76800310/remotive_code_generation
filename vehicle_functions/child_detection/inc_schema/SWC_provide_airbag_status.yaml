@@ -1,17 +1,9 @@
-# SWC_provide_airbag_status — local airbag status sensor → AirbagStatusReport on CAN
-# Source: airbag_control_unit.yaml — handler "on_provide_airbag_status"
-# Pattern: DirectSignalMapping — pure CAN→CAN routing.
-# AirbagStatusReport.AirbagStatus is consumed by CentralHPC's
-#   ChildAlert evaluation (AirbagStatus==ON gates ChildAlertActive).
-
 handlers:
-  - name: on_provide_airbag_status
+  - name: Provide_Airbag_Status
     pattern: DirectSignalMapping
     input:
       namespace: AIRBAG-CpdCan0
-      frame_filter: AirbagStatusSensor
       signal: AirbagStatusSensor.AirbagStatus
     output:
       - namespace: AIRBAG-CpdCan0
-        signals:
-          - AirbagStatusReport.AirbagStatus
+        signals: [AirbagStatusReport.AirbagStatus]

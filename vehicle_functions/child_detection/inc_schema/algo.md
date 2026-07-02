@@ -13,5 +13,10 @@
        - record source SWC on each WebsocketListenerIR.source_swc: str = ""
    2.3 uniqueness check across inlined handlers (by name)  → BuilderError on dupe
    2.4 uniqueness check across inlined websocket_listeners (by name)  → BuilderError on dupe
-3. run existing build_ir(spec) on the merged spec  → BehavioralModelIR
+3. for every inlined handler.input: frame_filter is INFERRED from signal prefix
+       - signal format: "Frame.Signal" (e.g., "SeatInput.SeatOccupied")
+       - frame_filter = signal.split(".", 1)[0]   # everything before the first dot
+       - signal.split(".", 1) must yield exactly 2 parts  → BuilderError on bare signal
+       - this replaces any explicit frame_filter field (no longer accepted)
+4. run existing build_ir(spec) on the merged spec  → BehavioralModelIR
    (existing 16 invariants + strict-required now check namespace_types from ECU; SWC refs must resolve to ECU map)

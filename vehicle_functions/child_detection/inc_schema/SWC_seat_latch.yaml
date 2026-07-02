@@ -1,24 +1,10 @@
-# SWC_seat_latch — latch SeatOccupied, recompute ChildAlertActive
-# Source: central_hpc.yaml — handler "on_seat_update"
-# Pattern: novel_logic (stateful fusion across two input frames: SeatInput + CameraInput)
-#   ChildPresent = SeatOccupied AND ChildDetectedByCamera
-#   Alert        = ChildPresent  AND AirbagStatus==ON
-# This handler owns the `seat_occupied` bool slot. The companion handler
-# on_camera_update owns `camera_detected`. Both feed the same output
-# ChildAlert.ChildAlertActive so the compiler emits two callbacks that
-# write to the same signal — the OR-fusion happens at the restbus layer.
-# Body is left as a hand-filled stub because the recipe library does not
-# yet have a generic latch+OR recipe.
-
 handlers:
-  - name: on_seat_update
+  - name: Seat_Latch
     pattern: SeatLatch
     novel_logic: true
     input:
       namespace: CENTRAL-CpdCan0
-      frame_filter: SeatInput
       signal: SeatInput.SeatOccupied
     output:
       - namespace: CENTRAL-CpdCan0
-        signals:
-          - ChildAlert.ChildAlertActive
+        signals: [ChildAlert.ChildAlertActive]
