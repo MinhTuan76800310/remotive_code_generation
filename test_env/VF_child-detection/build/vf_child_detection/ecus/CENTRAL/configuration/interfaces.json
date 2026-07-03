@@ -1,0 +1,21 @@
+{
+  "channels": [],
+  "chains": [
+    {
+      "type": "udp",
+      "database_config": {
+        "type": "can",
+        "can_physical_channel_name": "CpdCan0"
+      },
+      "server_host": "10.1.0.3",
+      "server_port": 14000,
+      "short_names": false,
+      "sub_type": "pdu",
+      "target_host": "230.0.0.1",
+      "target_port": 14000,
+      "namespace": "CENTRAL-CpdCan0",
+      "database": "dbs/cpd.dbc"
+    }
+  ],
+  "master_node": "topology@topology-broker.com"
+}

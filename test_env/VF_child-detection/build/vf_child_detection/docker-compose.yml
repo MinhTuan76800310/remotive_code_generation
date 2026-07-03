@@ -1,0 +1,476 @@
+---
+name: vf_child_detection
+services:
+  topology-api:
+    init: true
+    ports:
+      - 50051:8080
+      - 127.0.0.1:50443:8443
+    image: nginx:1.27-alpine
+    networks:
+      ----control_network:
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - $HOME/.config/remotive/certs:/etc/nginx/certs:ro
+  web-app:
+    init: true
+    ports:
+      - 8080:8080
+    tty: true
+    image: remotivelabs/remotive-web-app:${REMOTIVEWEBAPP_TAG:-1.15}
+    networks:
+      ----control_network:
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    profiles:
+      - ui
+    stdin_open: true
+  AIRBAG-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.2
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=AIRBAG@AIRBAG-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=786B15B4B207E2E8ED0026AA6D4E2692F9FFA632B73CE9C3943333247E6B379F
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://AIRBAG-broker.com:50051
+    volumes:
+      - ./ecus/AIRBAG/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+  CENTRAL-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.3
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=CENTRAL@CENTRAL-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=8D103435C4473EEF4B07CFFF11E9B0C496EE5B4C7E2B886749BCA957A50E8783
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://CENTRAL-broker.com:50051
+    volumes:
+      - ./ecus/CENTRAL/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+  COCKPIT-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.4
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=COCKPIT@COCKPIT-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=7EDC0D9C00AEFCCBFFEA9DEF958A33A6E1D2CFA4B5C3B1293EC960733D747E42
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://COCKPIT-broker.com:50051
+    volumes:
+      - ./ecus/COCKPIT/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+  DMS-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.5
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=DMS@DMS-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=2CB266E9CAC1BFA08A0A3A7EAE56FF3FD6A31EA4D5D9E6072177830D726722EF
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://DMS-broker.com:50051
+    volumes:
+      - ./ecus/DMS/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+  SEAT-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.6
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      topology-broker.com:
+        condition: service_healthy
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=SEAT@SEAT-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=B051C5B67A40F070BCCA6956648068B7208535B3A9787D383A39F19A0E514ACD
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://SEAT-broker.com:50051
+    volumes:
+      - ./ecus/SEAT/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+  airbagcontrolunit:
+    command:
+      - python
+      - -m
+      - airbagcontrolunit
+    init: true
+    build:
+      args:
+        - MODEL_PATH=airbag_control_unit/python
+      context: ../..
+      target: model
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      AIRBAG-broker.com:
+        condition: service_healthy
+    environment:
+      - REMOTIVE_BROKER_URL=http://AIRBAG-broker.com:50051
+  centralhpc:
+    command:
+      - python
+      - -m
+      - centralhpc
+    init: true
+    build:
+      args:
+        - MODEL_PATH=central_hpc/python
+      context: ../..
+      target: model
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      CENTRAL-broker.com:
+        condition: service_healthy
+    environment:
+      - REMOTIVE_BROKER_URL=http://CENTRAL-broker.com:50051
+  cockpithmiecu:
+    command:
+      - python
+      - -m
+      - cockpithmiecu
+    init: true
+    build:
+      args:
+        - MODEL_PATH=cockpit_hmi_ecu/python
+      context: ../..
+      target: model
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      COCKPIT-broker.com:
+        condition: service_healthy
+    environment:
+      - REMOTIVE_BROKER_URL=http://COCKPIT-broker.com:50051
+  drivermonitoringecu:
+    command:
+      - python
+      - -m
+      - drivermonitoringecu
+    init: true
+    build:
+      args:
+        - MODEL_PATH=driver_monitoring_ecu/python
+      context: ../..
+      target: model
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      DMS-broker.com:
+        condition: service_healthy
+    environment:
+      - REMOTIVE_BROKER_URL=http://DMS-broker.com:50051
+      - WS_CAMERA_URL=ws://host.docker.internal:1122
+    extra_hosts:
+      - host.docker.internal:host-gateway
+  seatecu:
+    command:
+      - python
+      - -m
+      - seatecu
+    init: true
+    build:
+      args:
+        - MODEL_PATH=seat_ecu/python
+      context: ../..
+      target: model
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      SEAT-broker.com:
+        condition: service_healthy
+    environment:
+      - REMOTIVE_BROKER_URL=http://SEAT-broker.com:50051
+  tester:
+    command:
+      - pytest
+      - --broker_url=http://topology-broker.com:50051
+      - -s
+      - -vv
+    init: true
+    build:
+      args:
+        []
+      context: ../..
+      target: tester
+      dockerfile: Dockerfile
+    networks:
+      ----control_network:
+    depends_on:
+      airbagcontrolunit:
+        condition: service_started
+      centralhpc:
+        condition: service_started
+      cockpithmiecu:
+        condition: service_started
+      drivermonitoringecu:
+        condition: service_started
+      seatecu:
+        condition: service_started
+    environment:
+      - REMOTIVE_BROKER_URL=http://topology-broker.com:50051
+    volumes:
+      - ../../tests:/app
+    profiles:
+      - tester
+    working_dir: /app
+  topology-broker.com:
+    init: true
+    ports: []
+    tty: true
+    image: remotivelabs/remotivebroker-server:${REMOTIVEBROKER_TAG:-1.24}
+    networks:
+      ----control_network:
+      CpdCan0:
+        ipv4_address: 10.1.0.7
+    cap_add:
+      - NET_ADMIN
+    depends_on: {}
+    environment:
+      - REPLACE_OS_VARS=true
+      - COOKIE=test
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=topology@topology-broker.com
+      - REMOTIVE_CLOUD_BASE_URL=${REMOTIVE_CLOUD_BASE_URL:-https://cloud.remotivelabs.com}
+      - REMOTIVE_CLOUD_AUTH_TOKEN=${REMOTIVE_CLOUD_AUTH_TOKEN:-}
+      - REMOTIVE_CLOUD_ORGANIZATION=${REMOTIVE_CLOUD_ORGANIZATION:-}
+      - REMOTIVE_CONFIG_DIR=/.config/remotive
+      - TOPOLOGY=true
+      - TOPOLOGY_INSTANCE_ID=AF8C21C629C3946159BDB0D93BC441E48F0A76CFA800AC5292EAEE96A203D1DA
+      - TOPOLOGY_GENERATE_ID=d018b42d-7c1b-4eee-b8cb-6860d580b61e
+      - REMOTIVE_BROKER_CONFIG_ID=31406BD74840C21F653756F8D3FE359763682721877ED032841D4719DEF71A2E
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+      - TOPOLOGY_BROKER=true
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      timeout: 10s
+      interval: 1m
+      retries: 3
+      start_interval: 1s
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - --noproxy
+        - '*'
+        - -f
+        - -H
+        - 'Content-type: application/json'
+        - http://topology-broker.com:50051
+    volumes:
+      - ./ecus/topology/configuration:/signalbroker/_build/prod/rel/signal_server/configuration
+      - $HOME/.config/remotive:/.config/remotive:ro
+networks:
+  ----control_network:
+    driver_opts:
+      com.docker.network.bridge.name: control_network
+  CpdCan0:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.1.0.0/24

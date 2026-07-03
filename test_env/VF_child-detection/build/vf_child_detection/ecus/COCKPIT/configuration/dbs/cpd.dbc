@@ -1,0 +1,94 @@
+VERSION "1.0"
+
+NS_ :
+    BO_
+    SG_
+    BA_DEF_ BO_
+    BA_
+    VAL_
+    BU_
+
+BU_:
+    SEAT
+    DMS
+    CENTRAL
+    COCKPIT
+    AIRBAG
+
+BO_ 100 SeatInput: 1 SEAT
+ SG_ SeatOccupied : 0|1@1+ (1,0) [0|1] ""  CENTRAL
+
+VAL_ 100 SeatOccupied 0 "NotOccupied" 1 "ChildOccupied";
+
+BA_DEF_ BO_ "GenMsgCycleTime" FLOAT 0 10000;
+BA_ "GenMsgCycleTime" BO_ 100 50;
+
+BO_ 101 CameraInput: 1 DMS
+ SG_ ChildDetectedByCamera : 0|1@1+ (1,0) [0|1] ""  CENTRAL
+
+VAL_ 101 ChildDetectedByCamera 0 "NoChild" 1 "ChildDetected";
+
+BA_ "GenMsgCycleTime" BO_ 101 50;
+
+BO_ 102 SeatWeightSensor: 8 SEAT
+ SG_ WeightKg : 0|16@1+ (0.1,0) [0|6553.5] "kg"  SEAT
+
+VAL_ 102 WeightKg 0 "Empty";
+
+BA_ "GenMsgCycleTime" BO_ 102 100;
+
+BO_ 103 ChildAlert: 1 CENTRAL
+ SG_ ChildAlertActive : 0|1@1+ (1,0) [0|1] ""  COCKPIT
+
+VAL_ 103 ChildAlertActive 0 "NoAlert" 1 "Alert";
+
+BA_ "GenMsgCycleTime" BO_ 103 50;
+
+BO_ 104 AirbagControlCommand: 1 CENTRAL
+ SG_ AirbagControlCommand : 0|1@1+ (1,0) [0|1] ""  AIRBAG
+
+VAL_ 104 AirbagControlCommand 0 "KeepOn" 1 "TurnOff";
+
+BA_ "GenMsgCycleTime" BO_ 104 50;
+
+BO_ 105 DriverDecision: 1 COCKPIT
+ SG_ TurnAirbagOff : 0|1@1+ (1,0) [0|1] ""  CENTRAL
+
+VAL_ 105 TurnAirbagOff 0 "KeepAirbag" 1 "TurnAirbagOff";
+
+BA_ "GenMsgCycleTime" BO_ 105 50;
+
+BO_ 106 HmiChildWarning: 1 COCKPIT
+ SG_ ChildAlertActive : 0|1@1+ (1,0) [0|1] ""  COCKPIT
+
+VAL_ 106 ChildAlertActive 0 "NoWarning" 1 "ShowWarning";
+
+BA_ "GenMsgCycleTime" BO_ 106 50;
+
+BO_ 107 HmiDriverAction: 1 COCKPIT
+ SG_ TurnAirbagOff : 0|1@1+ (1,0) [0|1] ""  COCKPIT
+
+VAL_ 107 TurnAirbagOff 0 "KeepAirbag" 1 "TurnAirbagOff";
+
+BA_ "GenMsgCycleTime" BO_ 107 50;
+
+BO_ 108 AirbagStatusSensor: 1 AIRBAG
+ SG_ AirbagStatus : 0|1@1+ (1,0) [0|1] ""  AIRBAG
+
+VAL_ 108 AirbagStatus 0 "Off" 1 "On";
+
+BA_ "GenMsgCycleTime" BO_ 108 100;
+
+BO_ 109 AirbagStatusReport: 1 AIRBAG
+ SG_ AirbagStatus : 0|1@1+ (1,0) [0|1] ""  CENTRAL
+
+VAL_ 109 AirbagStatus 0 "Off" 1 "On";
+
+BA_ "GenMsgCycleTime" BO_ 109 100;
+
+BO_ 110 AirbagActuatorState: 1 AIRBAG
+ SG_ AirbagActuated : 0|1@1+ (1,0) [0|1] ""  AIRBAG
+
+VAL_ 110 AirbagActuated 0 "NotActuated" 1 "Actuated";
+
+BA_ "GenMsgCycleTime" BO_ 110 50;
