@@ -1,5 +1,7 @@
 # MVP Plan — Remotive Behavioral Model Compiler
 
+> **Delivery status (2026-07-06)**: MVP compiler scope **exceeded** on branch `service_oriented` — 9 recipes (incl. **WeightedLogOdds**), `inc_schema` ECU composition, child_detection **generated/** + **test_env** E2E (9 pytest, K-map oracle). **Observed**: `pytest tests/` → 139 passed in `remotive-bm-compiler/`. **Inferred**: M1–M6 acceptance items are met for shipped patterns; topology E2E is integration validation outside `bmgen verify`.
+
 ## Problem Statement
 
 Creating Remotive Behavioral Model Python code is currently a manual, error-prone process. Engineers must:
@@ -57,6 +59,17 @@ This leads to:
 | `DirectSignalMapping` | Read one input signal → write same value to one or more output signals via `restbus.update_signals` | P0 |
 | `ToggleButtonState` | Read button signal → toggle internal boolean → write state to output signals | P0 |
 | `PeriodicBlinkingOutput` | Internal state enables/disables blinking → periodic async task → cleanup/reset | P1 (MVP+) |
+| `WeightedLogOdds` | Multi-namespace fan-in; latched bool inputs; weighted sum vs threshold (CAD) | **Shipped** (child_detection) |
+| `ThresholdMapping`, `Logic*`, `WebsocketBridge` | Analog threshold, gates, WS→CAN | **Shipped** (see `bmgen recipes`) |
+
+### End-to-end beyond MVP (child_detection)
+
+| Step | Command / artifact |
+|------|-------------------|
+| Regen from `inc_schema` | `vehicle_functions/child_detection/regen-all-from-inc-schema.sh` |
+| Sync to Docker models | `sync-generated-to-test_env.sh` |
+| Topology E2E | `test_env/VF_child-detection/run-e2e-tests.sh` |
+| UI + step test | `run-dashboard-interactive.sh` → http://localhost:8080 |
 
 ### What's Out (Future Scope)
 

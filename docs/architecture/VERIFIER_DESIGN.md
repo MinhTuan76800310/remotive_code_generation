@@ -1,5 +1,8 @@
 # Verifier Design — Remotive Behavioral Model Compiler
 
+> **Last updated**: 2026-07-06  
+> **Observed**: T1–T3 run via `bmgen verify`; **integration** truth-table checks for CAD live in `test_env/VF_child-detection/tests/test_child_detection.py` (Remotive topology + `capture_frames`), not inside `bmgen.verifier`.
+
 ## 3-Layer Verification Architecture
 
 The verifier operates in three sequential layers. Each layer must PASS before the next layer executes. This fail-fast design prevents wasting time on behavioral or composition checks when the code is structurally broken.
@@ -53,6 +56,7 @@ Generated Python Code
 
 - `novel_logic=True` handlers: T1 still checks structural form (stub handler exists, is async, accepts frame), but does NOT check `restbus.update_signals_used`
 - Handlers that don't use `restbus` (e.g., future SOME/IP `notify` calls): T1 checks the appropriate output method instead
+- **WeightedLogOdds**: T1 expects `handler_weighted.py.j2` output — async handler, `self._*_latched` updates, `_weighted_sum` + `restbus.update_signals` on output group
 
 ## T2: Behavioral Verifier
 
