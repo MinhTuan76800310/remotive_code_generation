@@ -1,5 +1,8 @@
 # Dataflow — Remotive Behavioral Model Compiler
 
+> **Schema version**: `service_oriented` — namespace_types map + multi-output handlers
+> **Last updated**: 2026-07-06
+
 ## End-to-End Dataflow
 
 ### Mermaid Diagram: Main Pipeline
@@ -8,14 +11,18 @@
 flowchart TD
     A[YAML Spec File] --> B[parser.py<br/>YAML → raw dict]
     B --> C[builder.py<br/>raw dict → IR dataclasses]
-    C --> D{validators.py<br/>Invariant checks}
-    D -->|VIOLATIONS FOUND| E[EXIT 1<br/>Print violations]
-    D -->|ALL PASS| F[registry.py<br/>Pattern lookup per handler]
+    C --> C1[_infer_namespaces<br/>collect refs → derive role → auto-create restbus]
+    C1 --> D{validate_namespace_types<br/>Rules 14/15/16}
+    D -->|ERRORS| E[EXIT 1<br/>Print violations]
+    D -->|PASS/WARNINGS| D2{validate<br/>Rules 1-13}
+    D2 -->|ERRORS| E
+    D2 -->|PASS| D3[_apply_value_exprs<br/>recipe.output_value_expr → signals]
+    D3 --> F[registry.py<br/>Pattern lookup per handler]
     F --> G{recipe.validate<br/>handler_ir}
-    G -->|INVALID FOR RECIPE| H[EXIT 1<br/>Recipe mismatch error]
+    G -->|INVALID| H[EXIT 1<br/>Recipe mismatch error]
     G -->|VALID| I[recipe.build_context<br/>handler_ir → context dict]
-    I --> J[context_builder.py<br/>Merge all handler contexts<br/>+ model-level context]
-    J --> K[python_generator.py<br/>Jinja2 template rendering]
+    I --> J[context_builder.py<br/>_merge_recipe_context<br/>output_groups + flat fields]
+    J --> K[python_generator.py<br/>Jinja2 template rendering<br/>with multi-output branches]
     K --> L[Generated Python Files<br/>__main__.py, __init__.py, log.py]
     L --> M[structural.py<br/>T1: Structural checks]
     M -->|T1 FAIL| N[Report: FAIL<br/>Stop pipeline]
@@ -39,17 +46,24 @@ flowchart TD
         V1[Duplicate namespace name] --> E1[Invariant violation]
         V2[Duplicate handler name] --> E1
         V3[Handler references non-existent namespace] --> E1
-        V4[Output namespace missing restbus config] --> E1
-        V5[State field has multiple owners] --> E1
-        V6[Periodic task missing cleanup] --> E1
-        V7[Resettable state missing reset value] --> E1
+        V4[Output group references non-existent namespace] --> E1
+        V5[Output namespace missing restbus config] --> E1
+        V6[State field has multiple owners] --> E1
+        V7[Periodic task missing cleanup] --> E1
+        V8[Resettable state missing reset value] --> E1
+        V14[Namespace ref not in namespace_types map] --> E1
+        V15[Unknown type in namespace_types] --> E1
+    end
+
+    subgraph "Warnings (non-blocking)"
+        W16[Orphan namespace_types key] --> WARN[Warning printed, build continues]
     end
 
     subgraph "Recipe Validation Failures"
         R1[Unknown pattern name] --> E2[Recipe not found in registry]
-        R2[DirectSignalMapping with state fields] --> E3[Recipe mismatch:<br/>pattern requires no state]
+        R2[ThresholdMapping without threshold] --> E3[Recipe mismatch]
         R3[ToggleButtonState without boolean state] --> E3
-        R4[PeriodicBlinkingOutput without cleanup] --> E3
+        R4[WS listener without cleanup] --> E3
     end
 
     subgraph "Verification Failures"
@@ -65,10 +79,11 @@ flowchart TD
         T2b[restbus.update_signals not called] --> T2F
         T2c[Wrong signal values in output] --> T2F
         T2d[Toggle does not flip on second press] --> T2F
+        T2e[Multi-output: wrong number of update_signals calls] --> T2F
 
         T3a[Duplicate handler names in model] --> T3F[T3 Composition FAIL]
         T3b[State owned by multiple handlers] --> T3F
-        T3c[Pattern conflict:<br/>two handlers write same signal] --> T3F
+        T3c[Pattern conflict: two handlers write same signal] --> T3F
         T3d[Periodic task without cleanup] --> T3F
         T3e[Reset handler missing for owned states] --> T3F
     end
@@ -82,83 +97,105 @@ flowchart TD
     FAIL_REPORT --> CI_BLOCK[CI blocks merge]
 ```
 
-### Mermaid Diagram: `novel_logic` Escape Hatch
+### Mermaid Diagram: Namespace Inference
 
 ```mermaid
 flowchart TD
-    A[YAML Spec with unknown pattern] --> B[parser.py → raw dict]
-    B --> C[builder.py → IR]
-    C --> D[validators.py: unknown pattern detected]
-    D --> E{Is pattern in registry?}
-    E -->|NO| F[novel_logic flag set in IR]
-    F --> G[EXIT 1:<br/>"Pattern 'CustomBehavior' not in registry.<br/>Mark as novel_logic or implement recipe."]
-    E -->|YES| H[Continue normal pipeline]
-
-    A2[YAML Spec with novel_logic marker] --> B2[parser.py → raw dict]
-    B2 --> C2[builder.py → IR with novel_logic=True]
-    C2 --> D2[validators.py: novel_logic accepted]
-    D2 --> E2{novel_logic flag?}
-    E2 -->|YES| F2[Generate stub handler:<br/>async def on_custom(self, frame):<br/>    # novel_logic: implement manually<br/>    pass]
-    F2 --> G2[T1 PASS (stub exists)<br/>T2 SKIP (novel_logic)<br/>T3 PASS (no conflicts)]
-    G2 --> H2[Report: PASS with novel_logic warnings]
-
-    style G fill:#f84,stroke:#900
-    style H2 fill:#ff4,stroke:#990
+    A[spec namespace_types:<br/>SEAT-CpdCan0: can<br/>SEAT-CpdCan1: can] --> B
+    B[handlers + ws_listeners] --> C{Collect refs}
+    C --> D1[on_seat_occupancy.input_namespace<br/>→ SEAT-CpdCan0 as_input]
+    C --> D2[on_seat_occupancy.output_groups[0]<br/>→ SEAT-CpdCan0 as_output]
+    C --> D3[on_seat_occupancy.output_groups[1]<br/>→ SEAT-CpdCan1 as_output]
+    D1 --> E{Derive role per name}
+    D2 --> E
+    D3 --> E
+    E --> F1[SEAT-CpdCan0: as_input + as_output<br/>→ role=both → restbus=RestbusConfig(SEAT)]
+    E --> F2[SEAT-CpdCan1: as_output only<br/>→ role=output → restbus=RestbusConfig(SEAT)]
+    F1 --> G[NamespaceIR list]
+    F2 --> G
 ```
+
+### WeightedLogOdds runtime path (CAD)
+
+```mermaid
+flowchart LR
+    subgraph inputs [Input frames - any order]
+        F1[SeatInput on CENTRAL-CpdCan0]
+        F2[CameraInput on DMS-CpdCan0]
+        F3[AirbagStatusReport on AIRBAG-CpdCan0]
+    end
+    F1 --> L[CAD_logic latches self._*_latched]
+    F2 --> L
+    F3 --> L
+    L --> S[Σ wᵢ·bool latchᵢ]
+    S --> T{sum >= threshold?}
+    T -->|yes| O[ChildAlert.ChildAlertActive = 1]
+    T -->|no| O0[ChildAlert.ChildAlertActive = 0]
+```
+
+E2E verification: `test_env/VF_child-detection/tests/test_child_detection.py` injects SEAT/DMS/AIRBAG restbus values, computes **expected** from the K-map formula, compares **actual** `HmiChildWarning.ChildAlertActive` on the live topology.
 
 ## Data Structures Flow
 
 ### YAML → Raw Spec Dict
 
-Input (YAML):
+Input (YAML — new schema):
 ```yaml
 model:
-  name: BCM
-  ecu_name: BCM
-namespaces:
-  - name: BCM-BodyCan0
-    type: can
-    role: output
-    restbus:
-      sender_filter: BCM
+  name: SeatECU
+  ecu_name: SEAT
+
+namespace_types:
+  SEAT-CpdCan0: can
+  SEAT-CpdCan1: can
+
 handlers:
-  - name: on_hazard_light
-    pattern: DirectSignalMapping
+  - name: on_seat_occupancy
+    pattern: ThresholdMapping
+    threshold: 8
+    operator: ">="
+    true_when: below
     input:
-      namespace: BCM-DriverCan0
-      frame_filter: HazardLightButton
-      signal: HazardLightButton.HazardLightButton
+      namespace: SEAT-CpdCan0
+      frame_filter: SeatWeightSensor
+      signal: SeatWeightSensor.WeightKg
     output:
-      namespace: BCM-BodyCan0
-      signals:
-        - TurnLightControl.RightTurnLightRequest
-        - TurnLightControl.LeftTurnLightRequest
+      - namespace: SEAT-CpdCan0
+        signals: [SeatInput.SeatOccupied]
+      - namespace: SEAT-CpdCan1
+        signals: [SeatInput.SeatOccupiedBackup]
 ```
 
 Output (raw dict):
 ```python
 {
-    "model": {"name": "BCM", "ecu_name": "BCM"},
-    "namespaces": [
-        {"name": "BCM-BodyCan0", "type": "can", "role": "output", "restbus": {"sender_filter": "BCM"}},
-        {"name": "BCM-DriverCan0", "type": "can", "role": "input"}
-    ],
+    "model": {"name": "SeatECU", "ecu_name": "SEAT"},
+    "namespace_types": {
+        "SEAT-CpdCan0": "can",
+        "SEAT-CpdCan1": "can"
+    },
     "handlers": [
         {
-            "name": "on_hazard_light",
-            "pattern": "DirectSignalMapping",
+            "name": "on_seat_occupancy",
+            "pattern": "ThresholdMapping",
+            "threshold": 8,
+            "operator": ">=",
+            "true_when": "below",
             "input": {
-                "namespace": "BCM-DriverCan0",
-                "frame_filter": "HazardLightButton",
-                "signal": "HazardLightButton.HazardLightButton"
+                "namespace": "SEAT-CpdCan0",
+                "frame_filter": "SeatWeightSensor",
+                "signal": "SeatWeightSensor.WeightKg"
             },
-            "output": {
-                "namespace": "BCM-BodyCan0",
-                "signals": [
-                    "TurnLightControl.RightTurnLightRequest",
-                    "TurnLightControl.LeftTurnLightRequest"
-                ]
-            }
+            "output": [
+                {
+                    "namespace": "SEAT-CpdCan0",
+                    "signals": ["SeatInput.SeatOccupied"]
+                },
+                {
+                    "namespace": "SEAT-CpdCan1",
+                    "signals": ["SeatInput.SeatOccupiedBackup"]
+                }
+            ]
         }
     ]
 }
@@ -168,58 +205,113 @@ Output (raw dict):
 
 ```python
 BehavioralModelIR(
-    name="BCM",
-    ecu_name="BCM",
+    name="SeatECU",
+    ecu_name="SEAT",
     namespaces=[
-        NamespaceIR(name="BCM-BodyCan0", type="can", role="output",
-                    restbus=RestbusConfigIR(sender_filter="BCM")),
-        NamespaceIR(name="BCM-DriverCan0", type="can", role="input",
-                    restbus=None)
+        NamespaceIR(name="SEAT-CpdCan0", type="can", role="both",
+                    restbus=RestbusConfigIR(sender_filter="SEAT"),
+                    python_var_name="cpd_can_0"),
+        NamespaceIR(name="SEAT-CpdCan1", type="can", role="output",
+                    restbus=RestbusConfigIR(sender_filter="SEAT"),
+                    python_var_name="cpd_can_1"),
     ],
     handlers=[
         HandlerIR(
-            name="on_hazard_light",
-            pattern="DirectSignalMapping",
-            input_namespace="BCM-DriverCan0",
-            input_frame_filter="HazardLightButton",
+            name="on_seat_occupancy",
+            pattern="ThresholdMapping",
+            input_namespace="SEAT-CpdCan0",
+            input_frame_filter="SeatWeightSensor",
             input_signals=[
-                InputSignalIR(name="HazardLightButton.HazardLightButton")
+                InputSignalIR(name="SeatWeightSensor.WeightKg",
+                             python_var_name="seat_weight_sensor_signal")
             ],
-            output_namespace="BCM-BodyCan0",
-            output_signals=[
-                OutputSignalIR(name="TurnLightControl.RightTurnLightRequest"),
-                OutputSignalIR(name="TurnLightControl.LeftTurnLightRequest")
+            output_groups=[
+                OutputGroupIR(
+                    namespace="SEAT-CpdCan0",
+                    signals=[
+                        OutputSignalIR(
+                            name="SeatInput.SeatOccupied",
+                            value_expr="1 if not (seat_weight_sensor_signal >= 8) else 0"
+                        )
+                    ]
+                ),
+                OutputGroupIR(
+                    namespace="SEAT-CpdCan1",
+                    signals=[
+                        OutputSignalIR(
+                            name="SeatInput.SeatOccupiedBackup",
+                            value_expr="1 if not (seat_weight_sensor_signal >= 8) else 0"
+                        )
+                    ]
+                ),
             ],
-            state=None,
-            periodic_task=None,
+            threshold=8.0,
+            operator=">=",
+            true_when="below",
             novel_logic=False
         )
     ],
-    reset_handler=None
+    reset_handler=None,
+    novel_logic_handlers=[],
+    websocket_listeners=[]
 )
 ```
+
+Key observations:
+- **Namespaces are inferred**: `SEAT-CpdCan0` gets role `"both"` (referenced as input AND output); `SEAT-CpdCan1` gets role `"output"` (referenced only as output)
+- **Restbus is auto-created**: Both get `RestbusConfigIR(sender_filter="SEAT")` because both have role `"output"` or `"both"`
+- **Output is `output_groups`**: Two `OutputGroupIR` entries, one per destination namespace
+- **Same value_expr fans out**: Both signals get identical `value_expr` from `ThresholdMappingRecipe.output_value_expr()`
 
 ### IR + Recipe → Template Context
 
 ```python
-# DirectSignalMapping recipe builds context:
+# ThresholdMapping recipe builds context:
 {
-    "handler_name": "on_hazard_light",
-    "input_signal_var": "hazard_signal",
-    "input_signal_ref": "HazardLightButton.HazardLightButton",
-    "output_tuples": [
-        ("TurnLightControl.RightTurnLightRequest", "hazard_signal"),
-        ("TurnLightControl.LeftTurnLightRequest", "hazard_signal")
+    "name": "on_seat_occupancy",
+    "pattern": "ThresholdMapping",
+    "template_name": "handler_direct.py.j2",
+    "handler_name": "on_seat_occupancy",
+    "input_signal_var": "seat_weight_sensor_signal",
+    "input_signal_ref": "SeatWeightSensor.WeightKg",
+    "input_namespace_var": "cpd_can_0",
+    # Canonical multi-output shape:
+    "output_groups": [
+        {
+            "namespace": "SEAT-CpdCan0",
+            "namespace_var": "cpd_can_0",
+            "signals": [
+                {"name": "SeatInput.SeatOccupied",
+                 "value_expr": "1 if not (seat_weight_sensor_signal >= 8) else 0"}
+            ]
+        },
+        {
+            "namespace": "SEAT-CpdCan1",
+            "namespace_var": "cpd_can_1",
+            "signals": [
+                {"name": "SeatInput.SeatOccupiedBackup",
+                 "value_expr": "1 if not (seat_weight_sensor_signal >= 8) else 0"}
+            ]
+        }
     ],
-    "output_namespace_var": "body_can_0",
-    "output_namespace_ref": "BCM-BodyCan0"
+    # Backward-compat flat fields (from output_groups[0]):
+    "output_namespace": "SEAT-CpdCan0",
+    "output_namespace_var": "cpd_can_0",
+    "output_signals": [
+        {"name": "SeatInput.SeatOccupied",
+         "value_expr": "1 if not (seat_weight_sensor_signal >= 8) else 0"}
+    ],
+    "output_tuples": [
+        ("SeatInput.SeatOccupied", "1 if not (seat_weight_sensor_signal >= 8) else 0")
+    ]
 }
 ```
 
 ### Template Context → Generated Python
 
+Because `output_groups|length == 2`, the template takes the **multi-output branch**:
+
 ```python
-# From main.py.j2 + handler_direct.py.j2:
 import asyncio
 import logging
 from dataclasses import dataclass
@@ -232,36 +324,43 @@ from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
 
 
 @dataclass
-class BCM:
-    body_can_0: CanNamespace
+class SeatECU:
+    cpd_can_0: CanNamespace
+    cpd_can_1: CanNamespace
 
-    async def on_hazard_light(self, frame: Frame) -> None:
-        hazard_signal = frame.signals["HazardLightButton.HazardLightButton"]
-        await self.body_can_0.restbus.update_signals(
-            ("TurnLightControl.RightTurnLightRequest", hazard_signal),
-            ("TurnLightControl.LeftTurnLightRequest", hazard_signal),
+    async def on_seat_occupancy(self, frame: Frame) -> None:
+        seat_weight_sensor_signal = frame.signals["SeatWeightSensor.WeightKg"]
+        await self.cpd_can_0.restbus.update_signals(
+            ("SeatInput.SeatOccupied", 1 if not (seat_weight_sensor_signal >= 8) else 0),
+        )
+        await self.cpd_can_1.restbus.update_signals(
+            ("SeatInput.SeatOccupiedBackup", 1 if not (seat_weight_sensor_signal >= 8) else 0),
         )
 
 
 async def main(avp: BehavioralModelArgs):
-    logging.info("Starting BCM simulator")
+    logging.info("Starting SeatECU simulator")
     async with BrokerClient(url=avp.url, auth=avp.auth) as broker_client:
-        body_can_0 = CanNamespace(
-            "BCM-BodyCan0",
+        cpd_can_0 = CanNamespace(
+            "SEAT-CpdCan0",
             broker_client,
-            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="BCM")], delay_multiplier=avp.delay_multiplier)],
+            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="SEAT")], delay_multiplier=avp.delay_multiplier)],
         )
-        driver_can_0 = CanNamespace("BCM-DriverCan0", broker_client)
-        bcm = BCM(body_can_0)
+        cpd_can_1 = CanNamespace(
+            "SEAT-CpdCan1",
+            broker_client,
+            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="SEAT")], delay_multiplier=avp.delay_multiplier)],
+        )
+        seatecu = SeatECU(cpd_can_0=cpd_can_0, cpd_can_1=cpd_can_1)
         async with BehavioralModel(
-            "BCM",
-            namespaces=[body_can_0, driver_can_0],
+            "SEAT",
+            namespaces=[cpd_can_0, cpd_can_1],
             broker_client=broker_client,
             input_handlers=[
-                driver_can_0.create_input_handler(
-                    [filters.FrameFilter("HazardLightButton")],
-                    bcm.on_hazard_light,
-                )
+                cpd_can_0.create_input_handler(
+                    [filters.FrameFilter("SeatWeightSensor")],
+                    seatecu.on_seat_occupancy,
+                ),
             ],
         ) as bm:
             await bm.run_forever()
@@ -274,76 +373,69 @@ if __name__ == "__main__":
     asyncio.run(main(args))
 ```
 
-### Generated Python → Verification Report
+Note the two `restbus.update_signals()` calls — one per output group, in declaration order. Both fan out the same threshold comparison expression. The `@dataclass` declares **both** `cpd_can_0` and `cpd_can_1` namespace fields.
 
-```json
-{
-  "status": "PASS",
-  "checks": [
-    {"layer": "structural", "name": "file_exists", "status": "PASS", "message": "generated/bcm/__main__.py found"},
-    {"layer": "structural", "name": "syntax_valid", "status": "PASS", "message": "Python syntax check passed"},
-    {"layer": "structural", "name": "module_imports", "status": "PASS", "message": "All imports successful"},
-    {"layer": "structural", "name": "handler_async", "status": "PASS", "message": "on_hazard_light is async"},
-    {"layer": "structural", "name": "handler_accepts_frame", "status": "PASS", "message": "on_hazard_light accepts frame parameter"},
-    {"layer": "structural", "name": "namespace_refs_exist", "status": "PASS", "message": "BCM-BodyCan0 and BCM-DriverCan0 referenced"},
-    {"layer": "structural", "name": "output_has_restbus", "status": "PASS", "message": "BCM-BodyCan0 has restbus config"},
-    {"layer": "structural", "name": "input_has_frame_filter", "status": "PASS", "message": "HazardLightButton FrameFilter found"},
-    {"layer": "behavioral", "name": "handler_callable", "status": "PASS", "message": "Handler invoked successfully with fake Frame"},
-    {"layer": "behavioral", "name": "direct_signal_mapping_output", "status": "PASS", "message": "update_signals received expected tuples"},
-    {"layer": "composition", "name": "no_duplicate_handlers", "status": "PASS", "message": "All handler names unique"},
-    {"layer": "composition", "name": "no_duplicate_state_ownership", "status": "PASS", "message": "No shared state fields"},
-    {"layer": "composition", "name": "no_pattern_conflicts", "status": "PASS", "message": "No conflicting output signals"}
-  ],
-  "generated_files": ["generated/bcm/__main__.py"],
-  "errors": []
-}
+Compare with a **single-output** handler (where `output_groups|length == 1`), which takes the else-branch and produces **byte-identical** code to the pre-service_oriented compiler:
+
+```python
+    async def on_child_alert(self, frame: Frame) -> None:
+        child_alert_signal = frame.signals["ChildAlert.ChildAlertActive"]
+        await self.cockpit_cpd_can_0.restbus.update_signals(
+            ("HmiChildWarning.ChildAlertActive", child_alert_signal),
+        )
 ```
 
-## Novel Logic Escape Hatch
+## Websocket Listener Dataflow
 
-When a YAML spec contains behavior that no recipe can handle:
-
-1. **Unknown pattern name**: The builder detects `pattern: "CustomBehavior"` is not in the registry → sets `novel_logic=True` → exits with error message suggesting either implementing a recipe or marking explicitly
-2. **Explicit `novel_logic` marker**: The YAML spec includes `novel_logic: true` on a handler → the builder allows it → the compiler generates a stub handler with a `# novel_logic: implement manually` comment → T2 skips behavioral checks for this handler → the verification report includes a `novel_logic` warning
-3. **Future Agent assistance**: When Agent/RAG layers are added, `novel_logic` handlers can be proposed by an Agent but must be reviewed and codified as a recipe before entering the deterministic pipeline
-
-### YAML with novel_logic
+### YAML → IR
 
 ```yaml
-handlers:
-  - name: on_custom_logic
-    pattern: UnknownPattern
-    novel_logic: true
-    input:
-      namespace: BCM-DriverCan0
-      frame_filter: CustomFrame
-      signal: CustomSignal.Value
-    output:
-      namespace: BCM-BodyCan0
-      signals:
-        - CustomOutput.Signal
+websocket_listeners:
+  - name: camera_child_detection
+    url: ws://localhost:1122
+    output_namespace: DMS-CpdCan0
+    signal_map:
+      - ws_key: ChildDetected
+        signal: CameraInput.ChildDetectedByCamera
+    cleanup: true
+    reconnect_delay_sec: 2.0
 ```
 
-This generates:
+→
+
 ```python
-async def on_custom_logic(self, frame: Frame) -> None:
-    # novel_logic: implement manually
-    # pattern: UnknownPattern
-    # input: CustomSignal.Value from BCM-DriverCan0
-    # output: CustomOutput.Signal to BCM-BodyCan0
-    pass
+WebsocketListenerIR(
+    name="camera_child_detection",
+    url="ws://localhost:1122",
+    output_namespace="DMS-CpdCan0",
+    signal_map=[("ChildDetected", "CameraInput.ChildDetectedByCamera")],
+    cleanup=True,
+    reconnect_delay_sec=2.0
+)
 ```
 
-And verification report includes:
-```json
-{
-  "status": "PASS",
-  "warnings": [
-    {
-      "handler": "on_custom_logic",
-      "type": "novel_logic",
-      "message": "Handler requires manual implementation. Behavioral verification skipped."
-    }
-  ]
-}
+### Template Context → Generated Python
+
+The `handler_websocket.py.j2` template renders a background asyncio task:
+
+```python
+    async def _camera_child_detection_task(self) -> None:
+        """Background task: external ws://localhost:1122 → CAN restbus."""
+        import json, websockets
+        while True:
+            try:
+                async with websockets.connect("ws://localhost:1122") as ws:
+                    logging.info("Connected to camera_child_detection")
+                    async for message in ws:
+                        data = json.loads(message)
+                        signals = []
+                        if "ChildDetected" in data:
+                            signals.append(("CameraInput.ChildDetectedByCamera", data["ChildDetected"]))
+                        if signals:
+                            await self.dms_cpd_can_0.restbus.update_signals(*signals)
+            except Exception as e:
+                logging.warning(f"camera_child_detection disconnected: {e}, reconnecting in 2.0s...")
+                await asyncio.sleep(2.0)
 ```
+
+The listener is started before `run_forever()` and cancelled in a `finally` block — ensuring cleanup on exit/reboot.
