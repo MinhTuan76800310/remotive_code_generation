@@ -1,0 +1,14 @@
+schema: remotive-topology-instance:0.17
+
+ecus:
+  COCKPIT:
+    models:
+      cockpithmiecu:
+        type: container
+        container:
+          build:
+            args:
+              - MODEL_PATH=cockpit_hmi_ecu/python
+            target: model
+            dockerfile: ../Dockerfile
+          command: python -m cockpithmiecu

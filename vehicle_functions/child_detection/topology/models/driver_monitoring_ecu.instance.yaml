@@ -1,0 +1,18 @@
+schema: remotive-topology-instance:0.17
+
+ecus:
+  DMS:
+    models:
+      drivermonitoringecu:
+        type: container
+        container:
+          build:
+            args:
+              - MODEL_PATH=driver_monitoring_ecu/python
+            target: model
+            dockerfile: ../Dockerfile
+          command: python -m drivermonitoringecu
+          environment:
+            - WS_CAMERA_URL=ws://host.docker.internal:1122
+          extra_hosts:
+            - "host.docker.internal:host-gateway"

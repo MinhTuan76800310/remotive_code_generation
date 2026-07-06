@@ -1,0 +1,14 @@
+schema: remotive-topology-instance:0.17
+
+ecus:
+  AIRBAG:
+    models:
+      airbagcontrolunit:
+        type: container
+        container:
+          build:
+            args:
+              - MODEL_PATH=airbag_control_unit/python
+            target: model
+            dockerfile: ../Dockerfile
+          command: python -m airbagcontrolunit

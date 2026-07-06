@@ -9,49 +9,49 @@ from remotivelabs.topology.namespaces import filters
 from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
 
 @dataclass
-class AirbagControlUnit:
+class CockpitHMIECU:
     cpd_can_0: CanNamespace
 
-    async def Provide_Airbag_Status(self, frame: Frame) -> None:
-        airbag_status_sensor_signal = frame.signals["AirbagStatusSensor.AirbagStatus"]
+    async def Child_Alert_Forward(self, frame: Frame) -> None:
+        child_alert_signal = frame.signals["ChildAlert.ChildAlertActive"]
         await self.cpd_can_0.restbus.update_signals(
-            ("AirbagStatusReport.AirbagStatus", airbag_status_sensor_signal),
+            ("HmiChildWarning.ChildAlertActive", child_alert_signal),
         )
 
-    async def CAD_turn_off_airbag(self, frame: Frame) -> None:
-        airbag_control_command_signal = frame.signals["AirbagControlCommand.AirbagControlCommand"]
+    async def Driver_Action_Publish(self, frame: Frame) -> None:
+        hmi_driver_action_signal = frame.signals["HmiDriverAction.TurnAirbagOff"]
         await self.cpd_can_0.restbus.update_signals(
-            ("AirbagActuatorState.AirbagActuated", airbag_control_command_signal),
+            ("DriverDecision.TurnAirbagOff", hmi_driver_action_signal),
         )
 
 
 
 async def main(avp: BehavioralModelArgs):
-    logging.info("Starting AirbagControlUnit simulator")
+    logging.info("Starting CockpitHMIECU simulator")
 
     async with BrokerClient(url=avp.url, auth=avp.auth) as broker_client:
         cpd_can_0 = CanNamespace(
-            "AIRBAG-CpdCan0",
+            "COCKPIT-CpdCan0",
             broker_client,
-            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="AIRBAG")], delay_multiplier=avp.delay_multiplier)],
+            restbus_configs=[RestbusConfig([filters.SenderFilter(ecu_name="COCKPIT")], delay_multiplier=avp.delay_multiplier)],
         )
 
-        airbagcontrolunit = AirbagControlUnit(
+        cockpithmiecu = CockpitHMIECU(
             cpd_can_0=cpd_can_0,
         )
 
         async with BehavioralModel(
-            "AIRBAG",
+            "COCKPIT",
             namespaces=[cpd_can_0],
             broker_client=broker_client,
             input_handlers=[
                 cpd_can_0.create_input_handler(
-                    [filters.FrameFilter("AirbagStatusSensor")],
-                    airbagcontrolunit.Provide_Airbag_Status,
+                    [filters.FrameFilter("ChildAlert")],
+                    cockpithmiecu.Child_Alert_Forward,
                 ),
                 cpd_can_0.create_input_handler(
-                    [filters.FrameFilter("AirbagControlCommand")],
-                    airbagcontrolunit.CAD_turn_off_airbag,
+                    [filters.FrameFilter("HmiDriverAction")],
+                    cockpithmiecu.Driver_Action_Publish,
                 ),
             ],
         ) as bm:

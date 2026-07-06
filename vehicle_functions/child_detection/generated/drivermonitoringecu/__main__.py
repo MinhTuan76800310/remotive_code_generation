@@ -1,5 +1,4 @@
 import asyncio
-import os
 import logging
 from dataclasses import dataclass
 
@@ -35,7 +34,7 @@ class DriverMonitoringECU:
         restbus signal. On disconnect/error a warning is logged and the listener
         reconnects after 2.0s.
         """
-        ws_url = os.environ.get("WS_CAMERA_URL", "ws://localhost:1122")
+        ws_url = "ws://localhost:1122"
         signal_map = [
             ("ChildDetected", "CameraInput.ChildDetectedByCamera"),
         ]

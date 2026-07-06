@@ -1,0 +1,15 @@
+schema: remotive-topology-instance:0.17
+
+name: child-detection-generated
+
+platform:
+  includes:
+    - ../platform/topology.platform.yaml
+
+includes:
+  - ../models/seat_ecu.instance.yaml
+  - ../models/driver_monitoring_ecu.instance.yaml
+  - ../models/central_hpc.instance.yaml
+  - ../models/cockpit_hmi_ecu.instance.yaml
+  - ../models/airbag_control_unit.instance.yaml
+  - ../tests/tester.instance.yaml

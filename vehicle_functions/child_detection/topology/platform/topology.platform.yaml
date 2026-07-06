@@ -1,0 +1,8 @@
+schema: remotive-topology-platform:0.17
+
+# CPD — one shared CAN bus (same layout as test_env/VF_child-detection).
+channels:
+  CpdCan0:
+    type: can
+    database: ./databases/cpd.dbc
+    can_physical_channel_name: CpdCan0

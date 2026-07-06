@@ -1,0 +1,14 @@
+schema: remotive-topology-instance:0.17
+
+ecus:
+  SEAT:
+    models:
+      seatecu:
+        type: container
+        container:
+          build:
+            args:
+              - MODEL_PATH=seat_ecu/python
+            target: model
+            dockerfile: ../Dockerfile
+          command: python -m seatecu

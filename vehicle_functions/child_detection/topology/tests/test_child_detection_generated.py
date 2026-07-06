@@ -1,10 +1,20 @@
-"""Integration tests — models synced from vehicle_functions/child_detection/generated.
+"""E2E tests for bmgen output — same style as getting_started/tests/test_hazard_light.py.
 
-inc_schema/SWC_CAD_logic.yaml:
+Topology source: vehicle_functions/child_detection/topology/
+Models under test: copied from vehicle_functions/child_detection/generated/ (sync via
+../sync-generated-to-topology.sh after bmgen generate).
+
+CAD logic (inc_schema/SWC_CAD_logic.yaml):
   weights: SeatInput=1, Camera=1, AirbagStatusReport=2
-  threshold: 3.0  ->  alert ON iff sum >= 3.0
+  threshold: 3.0
+  alert ON iff weighted_sum >= 3.0
 
-Run after: vehicle_functions/child_detection/sync-generated-to-test_env.sh
+Chain:
+  SEAT  WeightKg -> SeatOccupied
+  DMS   CameraInput (restbus inject in tests; prod uses WS)
+  AIRBAG AirbagStatusSensor -> AirbagStatusReport
+  CENTRAL WeightedLogOdds -> ChildAlert
+  COCKPIT -> HmiChildWarning
 """
 
 from __future__ import annotations
@@ -44,6 +54,7 @@ async def _inject_camera(broker: BrokerClient, child_detected: int) -> None:
 
 
 async def _inject_airbag_status_sensor(broker: BrokerClient, status: int) -> None:
+    """AIRBAG model maps AirbagStatusSensor -> AirbagStatusReport for CENTRAL fan-in."""
     await broker.restbus.update_signals(
         (
             "AIRBAG-CpdCan0",
@@ -55,7 +66,7 @@ async def _inject_airbag_status_sensor(broker: BrokerClient, status: int) -> Non
 @pytest.mark.asyncio
 @pytest.mark.timeout(20, func_only=True)
 async def test_child_alert_when_seat_camera_and_airbag_status_agree(broker_client: BrokerClient):
-    # 1+1+2 = 4 >= 3
+    # seat=1, cam=1, airbag=1 -> 1+1+2 = 4 >= 3
     await _inject_seat(broker_client, 4.0)
     await _inject_camera(broker_client, 1)
     await _inject_airbag_status_sensor(broker_client, 1)
@@ -71,7 +82,7 @@ async def test_child_alert_when_seat_camera_and_airbag_status_agree(broker_clien
 @pytest.mark.asyncio
 @pytest.mark.timeout(20, func_only=True)
 async def test_child_alert_at_threshold_without_seat(broker_client: BrokerClient):
-    # 0+1+2 = 3 >= 3
+    # seat=0, cam=1, airbag=1 -> 0+1+2 = 3 >= 3 (boundary)
     await _inject_seat(broker_client, 75.0)
     await _inject_camera(broker_client, 1)
     await _inject_airbag_status_sensor(broker_client, 1)
@@ -87,7 +98,7 @@ async def test_child_alert_at_threshold_without_seat(broker_client: BrokerClient
 @pytest.mark.asyncio
 @pytest.mark.timeout(20, func_only=True)
 async def test_no_alert_when_sum_below_threshold(broker_client: BrokerClient):
-    # 1+1+0 = 2 < 3
+    # seat=1, cam=1, airbag=0 -> 1+1+0 = 2 < 3
     await _inject_seat(broker_client, 4.0)
     await _inject_camera(broker_client, 1)
     await _inject_airbag_status_sensor(broker_client, 0)

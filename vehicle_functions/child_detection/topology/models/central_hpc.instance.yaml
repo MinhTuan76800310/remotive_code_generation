@@ -1,0 +1,17 @@
+schema: remotive-topology-instance:0.17
+
+ecus:
+  CENTRAL:
+    models:
+      centralhpc:
+        type: container
+        container:
+          build:
+            args:
+              - MODEL_PATH=central_hpc/python
+            target: model
+            dockerfile: ../Dockerfile
+          command: python -m centralhpc
+          environment:
+            # WeightedLogOdds fan-in: all namespaces on topology broker
+            - REMOTIVE_BROKER_URL=http://topology-broker.com:50051
