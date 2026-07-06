@@ -23,7 +23,11 @@ class CentralHPC:
             self._camera_input_child_detected_by_camera_latched = bool(frame.signals["CameraInput.ChildDetectedByCamera"])
         if "CameraInput.IsMoving" in frame.signals:
             self._camera_input_is_moving_latched = bool(frame.signals["CameraInput.IsMoving"])
-        _weighted_sum = (0.3 * (1 if _seat_input_latched else 0)) + (0.7 * (1 if _camera_input_child_detected_by_camera_latched else 0)) + (0.3 * (1 if _camera_input_is_moving_latched else 0))
+        _weighted_sum = (
+            0.3 * (1 if self._seat_input_latched else 0)
+            + 0.7 * (1 if self._camera_input_child_detected_by_camera_latched else 0)
+            + 0.3 * (1 if self._camera_input_is_moving_latched else 0)
+        )
         await self.cpd_can_0.restbus.update_signals(
             ("ChildAlert.ChildAlertActive", 1 if _weighted_sum >= 1.0 else 0),
         )

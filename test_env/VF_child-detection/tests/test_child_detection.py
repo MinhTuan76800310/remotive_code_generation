@@ -149,6 +149,74 @@ async def test_no_alert_when_only_seat_signal_fires(broker_client: BrokerClient)
 
 
 # ---------------------------------------------------------------------------
+# Truth table: all-off (sum=0.0) ⇒ OFF
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.timeout(20, func_only=True)
+async def test_no_alert_when_all_inputs_off(broker_client: BrokerClient):
+    await _inject_seat(broker_client, 75.0)
+    await _inject_camera(broker_client, child_detected=0, is_moving=0)
+
+    async with capture_frames((broker_client, "COCKPIT-CpdCan0"), ["HmiChildWarning"]) as cap:
+        await cap.wait_for_frame(
+            "HmiChildWarning",
+            {"HmiChildWarning.ChildAlertActive": 0.0},
+            timeout=15,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Truth table: seat+cam, no motion (sum=1.0) ⇒ ON (boundary)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.timeout(20, func_only=True)
+async def test_child_alert_when_seat_and_camera_no_motion(broker_client: BrokerClient):
+    await _inject_seat(broker_client, 4.0)
+    await _inject_camera(broker_client, child_detected=1, is_moving=0)
+
+    async with capture_frames((broker_client, "COCKPIT-CpdCan0"), ["HmiChildWarning"]) as cap:
+        await cap.wait_for_frame(
+            "HmiChildWarning",
+            {"HmiChildWarning.ChildAlertActive": 1.0},
+            timeout=15,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Truth table: seat+motion, no camera (sum=0.6) ⇒ OFF
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.timeout(20, func_only=True)
+async def test_no_alert_when_seat_and_motion_without_camera(broker_client: BrokerClient):
+    await _inject_seat(broker_client, 4.0)
+    await _inject_camera(broker_client, child_detected=0, is_moving=1)
+
+    async with capture_frames((broker_client, "COCKPIT-CpdCan0"), ["HmiChildWarning"]) as cap:
+        await cap.wait_for_frame(
+            "HmiChildWarning",
+            {"HmiChildWarning.ChildAlertActive": 0.0},
+            timeout=15,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Truth table: motion alone (sum=0.3) ⇒ OFF
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.timeout(20, func_only=True)
+async def test_no_alert_when_only_motion(broker_client: BrokerClient):
+    await _inject_seat(broker_client, 75.0)
+    await _inject_camera(broker_client, child_detected=0, is_moving=1)
+
+    async with capture_frames((broker_client, "COCKPIT-CpdCan0"), ["HmiChildWarning"]) as cap:
+        await cap.wait_for_frame(
+            "HmiChildWarning",
+            {"HmiChildWarning.ChildAlertActive": 0.0},
+            timeout=15,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Full airbag-deactivation path: alert → driver turns airbag off → AIRBAG actuates
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio

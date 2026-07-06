@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VF Child-Detection — Luồng kiểm thử End-to-End</title>
+  <style>
+    :root {
+      --bg: #f5efe3; --paper: #fffaf0; --ink: #242018; --muted: #6d6253; --line: #d8c9ac;
+      --accent: #0f766e; --accent-2: #b45309; --danger: #b91c1c; --good: #15803d;
+      --shadow: 0 18px 60px rgba(52, 42, 25, 0.13);
+      --mono: "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+      --sans: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif;
+      --serif: Georgia, "Times New Roman", serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(15, 118, 110, 0.12), transparent 32rem),
+        radial-gradient(circle at 92% 8%, rgba(180, 83, 9, 0.16), transparent 30rem),
+        linear-gradient(135deg, #f8f1df 0%, var(--bg) 45%, #ede3d1 100%);
+      color: var(--ink); font-family: var(--sans); line-height: 1.6;
+    }
+    .page { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 72px; }
+    header.hero {
+      border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 30px;
+      padding: clamp(28px, 5vw, 48px);
+      background: linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 247, 230, 0.88));
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      display: inline-flex; padding: 6px 12px; border-radius: 999px;
+      border: 1px solid rgba(15, 118, 110, 0.25); color: var(--accent);
+      background: rgba(15, 118, 110, 0.06); font-weight: 700; font-size: 0.85rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    h1 { margin: 18px 0 14px; font-family: var(--serif); font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1.05; letter-spacing: -0.04em; }
+    .verdict { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 24px; }
+    .verdict-card { border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 20px; padding: 16px; background: rgba(255, 255, 255, 0.55); }
+    .verdict-card .big { font-family: var(--serif); font-size: 1.8rem; color: var(--accent); }
+    nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0; }
+    nav.toc a {
+      text-decoration: none; color: var(--ink); border: 1px solid var(--line); border-radius: 999px;
+      padding: 7px 12px; background: rgba(255, 250, 240, 0.75); font-size: 0.92rem;
+    }
+    section {
+      margin-top: 26px; border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 26px;
+      padding: clamp(22px, 4vw, 36px); background: rgba(255, 250, 240, 0.86);
+      box-shadow: 0 10px 32px rgba(52, 42, 25, 0.08);
+    }
+    h2 { margin: 0 0 16px; font-family: var(--serif); font-size: clamp(1.5rem, 3vw, 2.2rem); }
+    h3 { margin: 20px 0 8px; font-size: 1.12rem; color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 12px 0; }
+    th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; }
+    th { background: rgba(15, 118, 110, 0.08); }
+    tr.on td:last-child { color: var(--good); font-weight: 700; }
+    tr.off td:last-child { color: var(--muted); }
+    tr.boundary { background: rgba(180, 83, 9, 0.08); }
+    code, pre { font-family: var(--mono); }
+    pre {
+      overflow-x: auto; border-radius: 18px; border: 1px solid rgba(36, 32, 24, 0.13);
+      padding: 16px; background: #201b15; color: #fff7e6; font-size: 0.84em; line-height: 1.45;
+    }
+    .badge {
+      display: inline-block; border-radius: 999px; padding: 3px 9px; font-size: 0.72rem; font-weight: 800;
+    }
+    .badge-observed { background: rgba(21, 128, 61, 0.15); color: var(--good); }
+    .badge-inferred { background: rgba(180, 83, 9, 0.15); color: var(--accent-2); }
+    .badge-unknown { background: rgba(109, 98, 83, 0.15); color: var(--muted); }
+    .badge-danger { background: rgba(185, 28, 28, 0.12); color: var(--danger); }
+    .card { border: 1px solid rgba(36, 32, 24, 0.12); border-radius: 20px; padding: 18px; background: rgba(255, 255, 255, 0.52); margin: 12px 0; }
+    .diagram { width: 100%; max-height: 320px; }
+    @media (max-width: 820px) { .verdict { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <span class="eyebrow">test_env / VF_child-detection</span>
+    <h1>Kiểm thử End-to-End — code bmgen &amp; topology</h1>
+    <p class="muted">
+      Tài liệu này map <strong>truth table WeightedLogOdds</strong> (weights Seat=0.3, Camera=0.7, IsMoving=0.3, threshold=1.0)
+      sang <strong>pytest tự động</strong> và <strong>Remotive CLI thủ công</strong>, để chứng minh behavioral model đã generate hoạt động đúng trên bus <code>CpdCan0</code>.
+    </p>
+    <div class="verdict">
+      <div class="verdict-card"><span class="big">9</span><strong>pytest cases</strong><span>8 truth + 1 airbag chain</span></div>
+      <div class="verdict-card"><span class="big">8</span><strong>ô truth table</strong><span>2×2×2 tổ hợp seat/cam/mov</span></div>
+      <div class="verdict-card"><span class="big">A</span><strong>E2E khuyến nghị</strong><span><code>./run-e2e-tests.sh</code></span></div>
+      <div class="verdict-card"><span class="big">B</span><strong>CLI + UI</strong><span>cheatsheet + camera :1123</span></div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#chain">Chuỗi tín hiệu</a>
+    <a href="#truth">Truth table</a>
+    <a href="#auto">A — Pytest E2E</a>
+    <a href="#manual">B — Remotive CLI</a>
+    <a href="#camera">Camera WebSocket</a>
+    <a href="#matrix">Ma trận case ↔ test</a>
+    <a href="#risks">Rủi ro / giới hạn</a>
+  </nav>
+
+  <section id="chain">
+    <h2>Chuỗi tín hiệu <span class="badge badge-observed">Observed</span></h2>
+    <p>Nguồn: <code>tests/test_child_detection.py</code>, <code>models/*/python/*/__main__.py</code>, <code>inc_schema</code> CAD logic.</p>
+    <svg class="diagram" viewBox="0 0 900 200" xmlns="http://www.w3.org/2000/svg" aria-label="Signal chain">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#0f766e"/>
+        </marker>
+      </defs>
+      <rect x="20" y="70" width="100" height="50" rx="12" fill="#fffaf0" stroke="#d8c9ac"/>
+      <text x="70" y="100" text-anchor="middle" font-size="13" font-family="Segoe UI">SEAT</text>
+      <text x="70" y="140" text-anchor="middle" font-size="11" fill="#6d6253">WeightKg → SeatOccupied</text>
+      <rect x="160" y="70" width="100" height="50" rx="12" fill="#fffaf0" stroke="#d8c9ac"/>
+      <text x="210" y="100" text-anchor="middle" font-size="13">DMS</text>
+      <text x="210" y="140" text-anchor="middle" font-size="11" fill="#6d6253">WS → CameraInput</text>
+      <rect x="320" y="55" width="120" height="80" rx="12" fill="rgba(15,118,110,0.1)" stroke="#0f766e"/>
+      <text x="380" y="90" text-anchor="middle" font-size="13" font-weight="bold">CENTRAL</text>
+      <text x="380" y="115" text-anchor="middle" font-size="10">WeightedLogOdds</text>
+      <rect x="500" y="70" width="100" height="50" rx="12" fill="#fffaf0" stroke="#d8c9ac"/>
+      <text x="550" y="100" text-anchor="middle" font-size="13">COCKPIT</text>
+      <rect x="640" y="70" width="100" height="50" rx="12" fill="#fffaf0" stroke="#d8c9ac"/>
+      <text x="690" y="100" text-anchor="middle" font-size="13">AIRBAG</text>
+      <line x1="120" y1="95" x2="155" y2="95" stroke="#0f766e" marker-end="url(#arr)"/>
+      <line x1="260" y1="95" x2="315" y2="95" stroke="#0f766e" marker-end="url(#arr)"/>
+      <line x1="440" y1="95" x2="495" y2="95" stroke="#0f766e" marker-end="url(#arr)"/>
+      <line x1="600" y1="95" x2="635" y2="95" stroke="#0f766e" marker-end="url(#arr)"/>
+      <text x="380" y="175" text-anchor="middle" font-size="11" fill="#b45309">DriverDecision → AirbagControlCommand (khi tài xế TurnAirbagOff)</text>
+    </svg>
+    <ul>
+      <li><strong>Seat</strong>: <code>SeatWeightSensor.WeightKg</code> — nếu &lt; 8 kg thì <code>SeatInput.SeatOccupied = 1</code> (<code>seatecu/__main__.py:18</code>).</li>
+      <li><strong>DMS</strong>: bridge WebSocket hoặc inject restbus <code>CameraInput.ChildDetectedByCamera</code>, <code>CameraInput.IsMoving</code>.</li>
+      <li><strong>CENTRAL</strong>: <code>Σ wᵢ·bool(inputᵢ) ≥ 1.0</code> → <code>ChildAlert.ChildAlertActive</code>; route <code>DriverDecision</code> → <code>AirbagControlCommand</code>.</li>
+      <li><strong>Assert E2E</strong>: thường đọc <code>COCKPIT-CpdCan0:HmiChildWarning.ChildAlertActive</code>; full path airbag đọc <code>AIRBAG-CpdCan0:AirbagActuatorState.AirbagActuated</code>.</li>
+    </ul>
+  </section>
+
+  <section id="truth">
+    <h2>Truth table WeightedLogOdds <span class="badge badge-observed">Observed</span></h2>
+    <p>seat/cam/mov = 1 khi tương ứng “child seat”, “camera thấy trẻ”, “đang chuyển động”. Sum = 0.3·seat + 0.7·cam + 0.3·mov.</p>
+    <table>
+      <thead>
+        <tr><th>seat</th><th>cam</th><th>mov</th><th>sum</th><th>ChildAlert</th><th>Ghi chú</th></tr>
+      </thead>
+      <tbody>
+        <tr class="off"><td>0</td><td>0</td><td>0</td><td>0.0</td><td>OFF</td><td>TC-00</td></tr>
+        <tr class="off"><td>1</td><td>0</td><td>0</td><td>0.3</td><td>OFF</td><td>TC-01 — chỉ ghế nhẹ</td></tr>
+        <tr class="off"><td>0</td><td>1</td><td>0</td><td>0.7</td><td>OFF</td><td>TC-02 — camera, không motion</td></tr>
+        <tr class="off"><td>0</td><td>0</td><td>1</td><td>0.3</td><td>OFF</td><td>TC-03 — chỉ motion</td></tr>
+        <tr class="boundary on"><td>1</td><td>1</td><td>0</td><td>1.0</td><td>ON</td><td>TC-04 — biên threshold</td></tr>
+        <tr class="off"><td>1</td><td>0</td><td>1</td><td>0.6</td><td>OFF</td><td>TC-05</td></tr>
+        <tr class="boundary on"><td>0</td><td>1</td><td>1</td><td>1.0</td><td>ON</td><td>TC-06 — không cần ghế</td></tr>
+        <tr class="on"><td>1</td><td>1</td><td>1</td><td>1.3</td><td>ON</td><td>TC-07 — happy path</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="auto">
+    <h2>A — Pytest E2E (khuyến nghị) <span class="badge badge-observed">Observed</span></h2>
+    <p>Broker URL: <code>http://topology-broker.com:50051</code> (trong mạng Docker). Fixture ping 5 ECU trước khi test.</p>
+    <pre><code>cd test_env/VF_child-detection
+
+# 1) Generate + chạy stack (nếu chưa có)
+./run-topology.sh
+
+# 2) Chạy toàn bộ E2E (build tester image + pytest)
+./run-e2e-tests.sh
+
+# Hoặc tương đương:
+docker compose -f build/vf_child_detection/docker-compose.yml \
+  --profile tester up --build --abort-on-container-exit tester</code></pre>
+    <div class="card">
+      <strong>Pass criteria</strong>: exit code 0; tất cả test trong <code>tests/test_child_detection.py</code> pass.
+      Inject qua Python SDK <code>broker.restbus.update_signals</code> — không cần camera WS khi chạy tester.
+    </div>
+  </section>
+
+  <section id="manual">
+    <h2>B — Remotive CLI (thủ công) <span class="badge badge-observed">Observed</span></h2>
+    <p>Pattern theo <code>remotive_command.md</code> và <code>remotive-cli-cheatsheet.md</code>. URL: <code>http://localhost:50051</code> (nginx topology-api).</p>
+    <h3>Setup một lần</h3>
+    <pre><code>export URL=http://localhost:50051
+
+remotive broker restbus add --url $URL --frame SEAT-CpdCan0:SeatWeightSensor --start
+remotive broker restbus add --url $URL --frame DMS-CpdCan0:CameraInput --start
+remotive broker restbus add --url $URL --frame COCKPIT-CpdCan0:HmiDriverAction --start</code></pre>
+    <h3>Subscribe (terminal 2)</h3>
+    <pre><code>remotive broker signals subscribe --url $URL \
+  --signal SEAT-CpdCan0:SeatInput.SeatOccupied \
+  --signal DMS-CpdCan0:CameraInput.ChildDetectedByCamera \
+  --signal DMS-CpdCan0:CameraInput.IsMoving \
+  --signal CENTRAL-CpdCan0:ChildAlert.ChildAlertActive \
+  --signal COCKPIT-CpdCan0:HmiChildWarning.ChildAlertActive \
+  --signal AIRBAG-CpdCan0:AirbagActuatorState.AirbagActuated</code></pre>
+    <h3>Ví dụ TC-07 (alert ON)</h3>
+    <pre><code>remotive broker restbus update --url $URL --signal SEAT-CpdCan0:SeatWeightSensor.WeightKg:4.0
+remotive broker restbus update --url $URL \
+  --signal DMS-CpdCan0:CameraInput.ChildDetectedByCamera:1 \
+  --signal DMS-CpdCan0:CameraInput.IsMoving:1
+# Kỳ vọng: ChildAlertActive=1, HmiChildWarning.ChildAlertActive=1</code></pre>
+    <h3>Ví dụ TC-02 (alert OFF, sum=0.7)</h3>
+    <pre><code>remotive broker restbus update --url $URL --signal SEAT-CpdCan0:SeatWeightSensor.WeightKg:75.0
+remotive broker restbus update --url $URL \
+  --signal DMS-CpdCan0:CameraInput.ChildDetectedByCamera:1 \
+  --signal DMS-CpdCan0:CameraInput.IsMoving:0</code></pre>
+    <h3>TC-09 — Airbag off (full chain)</h3>
+    <pre><code># Sau khi alert ON (TC-07):
+remotive broker signals publish --url $URL \
+  --signal COCKPIT-CpdCan0:HmiDriverAction.TurnAirbagOff:1
+# Kỳ vọng: AirbagActuatorState.AirbagActuated=1</code></pre>
+    <h3>Reset</h3>
+    <pre><code>remotive broker restbus stop  --url $URL --namespace SEAT-CpdCan0
+remotive broker restbus stop  --url $URL --namespace DMS-CpdCan0
+remotive broker restbus reset --url $URL --namespace SEAT-CpdCan0</code></pre>
+  </section>
+
+  <section id="camera">
+    <h2>Camera WebSocket UI <span class="badge badge-observed">Observed</span></h2>
+    <pre><code>cd test_env/VF_child-detection/camera_service
+uv run camera_ws_server.py --ui
+# UI: http://localhost:1123  |  WS: ws://localhost:1122</code></pre>
+    <p>DMS container dùng <code>WS_CAMERA_URL=ws://host.docker.internal:1122</code>. Toggle <strong>ChildDetected</strong> / <strong>IsMoving</strong> trên UI thay cho restbus update DMS (vẫn cần inject ghế qua SEAT restbus cho đủ truth table).</p>
+  </section>
+
+  <section id="matrix">
+    <h2>Ma trận case ↔ pytest</h2>
+    <table>
+      <thead><tr><th>ID</th><th>seat</th><th>cam</th><th>mov</th><th>WeightKg / inject</th><th>Test function</th></tr></thead>
+      <tbody>
+        <tr><td>TC-00</td><td>0</td><td>0</td><td>0</td><td>75 / 0,0</td><td><code>test_no_alert_when_all_inputs_off</code></td></tr>
+        <tr><td>TC-01</td><td>1</td><td>0</td><td>0</td><td>4 / 0,0</td><td><code>test_no_alert_when_only_seat_signal_fires</code></td></tr>
+        <tr><td>TC-02</td><td>0</td><td>1</td><td>0</td><td>75 / 1,0</td><td><code>test_no_alert_when_seat_weight_is_adult_and_no_motion</code></td></tr>
+        <tr><td>TC-03</td><td>0</td><td>0</td><td>1</td><td>75 / 0,1</td><td><code>test_no_alert_when_only_motion</code></td></tr>
+        <tr><td>TC-04</td><td>1</td><td>1</td><td>0</td><td>4 / 1,0</td><td><code>test_child_alert_when_seat_and_camera_no_motion</code></td></tr>
+        <tr><td>TC-05</td><td>1</td><td>0</td><td>1</td><td>4 / 0,1</td><td><code>test_no_alert_when_seat_and_motion_without_camera</code></td></tr>
+        <tr><td>TC-06</td><td>0</td><td>1</td><td>1</td><td>75 / 1,1</td><td><code>test_child_alert_threshold_from_camera_alone</code></td></tr>
+        <tr><td>TC-07</td><td>1</td><td>1</td><td>1</td><td>4 / 1,1</td><td><code>test_child_alert_when_seat_and_camera_and_moving_agree</code></td></tr>
+        <tr><td>TC-09</td><td>—</td><td>—</td><td>—</td><td>alert + TurnAirbagOff</td><td><code>test_driver_confirms_airbag_off_propagates_to_airbag</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="risks">
+    <h2>Rủi ro &amp; giới hạn</h2>
+    <div class="card">
+      <span class="badge badge-danger">Observed</span>
+      <strong>centralhpc + topology mode</strong>: model khai báo namespace <code>DMS-CpdCan0</code> trên cùng một <code>BrokerClient</code> trỏ tới broker CENTRAL/topology. Trên broker chỉ có <code>CENTRAL-CpdCan0</code>, container có thể <code>Exited (1)</code> với <code>Namespace 'DMS-CpdCan0' is not configured</code>.
+      <br><span class="muted">Pytest qua topology-broker + restbus vẫn có thể pass nếu CENTRAL process chạy và bus UDP multicast đồng bộ namespace — cần xác nhận bằng <code>./run-e2e-tests.sh</code> trên máy bạn.</span>
+    </div>
+    <div class="card">
+      <span class="badge badge-inferred">Inferred</span>
+      <strong>Codegen bug đã sửa tạm trong test_env</strong>: <code>centralhpc/__main__.py</code> dùng <code>self._*_latched</code> trong WeightedLogOdds (trước đó thiếu <code>self.</code>). Nên port fix vào <code>bmgen</code> template để regen không ghi đè.
+    </div>
+    <div class="card">
+      <span class="badge badge-unknown">Unknown</span>
+      Single-broker mode (một broker, 6 namespace) — đã thử <code>compose-single-broker.yml</code>, broker Erlang crash multi-chain; chưa có workaround production trong repo.
+    </div>
+  </section>
+
+  <section>
+    <h2>Checklist — bạn nên hiểu</h2>
+    <ul>
+      <li>Vì sao threshold 1.0 khiến TC-04 và TC-06 là biên (sum đúng 1.0).</li>
+      <li>Vì sao pytest inject DMS restbus thay vì bật camera (deterministic, không phụ thuộc WS).</li>
+      <li>SEAT → COCKPIT → AIRBAG chạy DirectSignalMapping; chỉ nhánh CAD là WeightedLogOdds fan-in.</li>
+      <li>Lệnh một dòng để verify codegen: <code>./run-e2e-tests.sh</code>.</li>
+    </ul>
+    <p class="muted">Artifact: <code>test_env/VF_child-detection/docs/e2e-child-detection-flow.html</code> · Script: <code>run-e2e-tests.sh</code> · Tests: <code>tests/test_child_detection.py</code></p>
+  </section>
+</div>
+</body>
+</html>
