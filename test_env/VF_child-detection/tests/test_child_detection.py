@@ -26,9 +26,12 @@ W_AIRBAG = 2.0
 THRESHOLD = 3.0
 
 
+def cad_weighted_sum(p_seat: int, p_cam: int, p_airbag: int) -> float:
+    return W_SEAT * p_seat + W_CAM * p_cam + W_AIRBAG * p_airbag
+
+
 def cad_expected(p_seat: int, p_cam: int, p_airbag: int) -> float:
-    s = W_SEAT * p_seat + W_CAM * p_cam + W_AIRBAG * p_airbag
-    return 1.0 if s >= THRESHOLD else 0.0
+    return 1.0 if cad_weighted_sum(p_seat, p_cam, p_airbag) >= THRESHOLD else 0.0
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,28 @@ CAD_KMAP: tuple[CadKmapRow, ...] = (
     CadKmapRow("km_110", 4.0, 1, 0, 1, 1, 0),
     CadKmapRow("km_111", 4.0, 1, 1, 1, 1, 1),  # sum=4 ON
 )
+
+
+def _log_kmap_case(row: CadKmapRow, actual: float, frame_name: str) -> None:
+    wsum = cad_weighted_sum(row.p_seat, row.p_cam, row.p_airbag)
+    exp = row.expected_alert
+    ok = actual == exp
+    print(
+        f"\n{'=' * 72}\n"
+        f"  K-map case : {row.id}\n"
+        f"  INJECT     : SEAT WeightKg={row.weight_kg}  "
+        f"DMS ChildDetected={row.child_detected}  "
+        f"AIRBAG AirbagStatusSensor={row.airbag_status}\n"
+        f"  BOOLS      : p_seat={row.p_seat}  p_cam={row.p_cam}  p_airbag={row.p_airbag}\n"
+        f"  CAD_LOGIC  : sum = 1·{row.p_seat} + 1·{row.p_cam} + 2·{row.p_airbag} = {wsum:.1f}  "
+        f"(threshold {THRESHOLD})\n"
+        f"  EXPECTED   : HmiChildWarning.ChildAlertActive = {exp:.0f}  "
+        f"({'ALERT ON' if exp else 'ALERT OFF'})\n"
+        f"  ACTUAL     : {frame_name}.ChildAlertActive = {actual:.0f}\n"
+        f"  RESULT     : {'MATCH' if ok else 'MISMATCH'}\n"
+        f"{'=' * 72}",
+        flush=True,
+    )
 
 
 @pytest_asyncio.fixture()
@@ -95,29 +120,42 @@ async def _apply_inputs(
 @pytest.mark.timeout(25, func_only=True)
 @pytest.mark.parametrize("row", CAD_KMAP, ids=[r.id for r in CAD_KMAP])
 async def test_cad_kmap_expected_matches_hmi_actual(broker_client: BrokerClient, row: CadKmapRow):
+    print(f"\n>>> Running K-map E2E: {row.id}", flush=True)
     await _apply_inputs(broker_client, row.weight_kg, row.child_detected, row.airbag_status)
 
     async with capture_frames((broker_client, "COCKPIT-CpdCan0"), ["HmiChildWarning"]) as cap:
-        await cap.wait_for_frame(
+        frame = await cap.wait_for_frame(
             "HmiChildWarning",
             {"HmiChildWarning.ChildAlertActive": row.expected_alert},
             timeout=18,
         )
+    actual = float(frame.signals["HmiChildWarning.ChildAlertActive"])
+    _log_kmap_case(row, actual, "HmiChildWarning")
+    assert actual == row.expected_alert, (
+        f"{row.id}: expected ChildAlertActive={row.expected_alert}, got {actual}"
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(30, func_only=True)
 async def test_driver_turn_airbag_off_propagates_to_actuator(broker_client: BrokerClient):
     row = next(r for r in CAD_KMAP if r.id == "km_111")
+    print("\n>>> Running airbag chain E2E (after km_111 alert)", flush=True)
     await _apply_inputs(broker_client, row.weight_kg, row.child_detected, row.airbag_status)
 
     await broker_client.restbus.update_signals(
         ("COCKPIT-CpdCan0", [RestbusSignalConfig.set(name="HmiDriverAction.TurnAirbagOff", value=1)])
     )
+    print("  INJECT     : COCKPIT HmiDriverAction.TurnAirbagOff = 1", flush=True)
+    print("  EXPECTED   : AIRBAG AirbagActuatorState.AirbagActuated = 1", flush=True)
 
     async with capture_frames((broker_client, "AIRBAG-CpdCan0"), ["AirbagActuatorState"]) as cap:
-        await cap.wait_for_frame(
+        frame = await cap.wait_for_frame(
             "AirbagActuatorState",
             {"AirbagActuatorState.AirbagActuated": 1.0},
             timeout=25,
         )
+    actual = float(frame.signals["AirbagActuatorState.AirbagActuated"])
+    print(f"  ACTUAL     : AirbagActuatorState.AirbagActuated = {actual:.0f}", flush=True)
+    print(f"  RESULT     : {'MATCH' if actual == 1.0 else 'MISMATCH'}\n", flush=True)
+    assert actual == 1.0
