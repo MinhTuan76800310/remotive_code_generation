@@ -113,6 +113,12 @@ Runs all WeightedLogOdds truth-table cases + airbag-off chain via `tests/test_ch
 
 **Manual CLI:** see [`remotive-cli-cheatsheet.md`](remotive-cli-cheatsheet.md) (namespaces `*-CpdCan0`, URL `http://localhost:50051`).
 
+**Dashboard + one test per Enter** (watch signals on http://localhost:8080):
+
+```bash
+./run-dashboard-interactive.sh
+```
+
 ---
 
 ## 5. Test scenarios (drive the chain manually)
