@@ -1,102 +1,116 @@
-# 🔧 Remotive Behavioral Model Compiler
+# Remotive Behavioral Model Compiler
 
-> **A deterministic compiler that transforms YAML behavior specs into verified Remotive Behavioral Model Python code.**
+**Compile, verify, and ship Remotive Behavioral Model Python code — deterministically, from a 30-line YAML spec.**
 
-[![CI: Verify Generated Models](https://img.shields.io/badge/CI-Verify_Generated_Models-blue?logo=github-actions)](.github/workflows/verify.yml)
+[![CI: Verify Generated Models](https://img.shields.io/badge/CI-verify__generated__models-blue?logo=github-actions&logoColor=white)](.github/workflows/verify.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](remotive-bm-compiler/pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)]()
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)](remotive-bm-compiler/pyproject.toml)
+[![Status: MVP Shipped](https://img.shields.io/badge/Status-MVP%20Shipped-2ea44f)]()
+
+> One YAML file in. One verified Remotive Behavioral Model package out. No hand-written handler bugs. No drift between spec and code. Same input → same output, every CI run.
+
+---
+
+## ⚡ 30-Second Quick Start
+
+```bash
+git clone <this-repo>
+cd remotive-bm-compiler
+pip install -e ".[dev]"
+
+bmgen generate examples/bcm_direct.yaml --out generated/bcm
+bmgen verify generated/bcm --spec examples/bcm_direct.yaml
+```
+
+Expected output:
+```
+Verification result: PASS
+Checks: 13 ✓ across structural / behavioral / composition
+```
+
+You just compiled an ECU behavioral model from YAML, and the 3-layer verifier proved it does what your spec says. The same `__main__.py` runs against a real Remotive broker. **That's the product.**
+
+---
+
+## 🎯 The Problem This Solves
+
+Writing Remotive Behavioral Models by hand is **slow, repetitive, and silently buggy**:
+
+| Pain | Hand-written workflow | With `bmgen` |
+|---|---|---|
+| Time per ECU | 2–4 hours | 30 seconds |
+| Spec → code consistency | None — depends on the engineer | Guaranteed: 3-layer verifier |
+| Reproducibility | "Who wrote this? When?" | Same YAML → same bytes, every run |
+| Common bug classes | Missing `async`, wrong `FrameFilter`, missing `restbus` config | Caught at compile time, not at runtime |
+| 6-ECU project total | 12–24 hours of manual work | 3 minutes |
+
+**Three core pain points, in one line each:**
+
+- **Repetitive patterns** — 80% of ECU handlers are 5–6 known shapes (forward, toggle, blink, threshold, logic gates). We turned them into a recipe registry.
+- **Silent bugs** — syntax passes, but `restbus` config is wrong, or the handler isn't `async`. We added structural + behavioral + composition checks to catch them.
+- **Non-determinism** — different engineers, different code, same spec. We made compilation deterministic: same YAML → same code, always.
+
+### Why not just use an LLM?
+
+Because **automotive is safety-critical**. Generated code has to be verifiable line-by-line, reproducible byte-for-byte, and traceable to a known pattern. So `bmgen` is **LLM-free on the compile path**: every line of generated code comes from a Jinja2 template + recipe logic, not a model. Agent/RAG layers can help write YAML specs or propose new recipes — but the compiler itself is deterministic. See [Future Vision](#-future-vision).
+
+---
+
+## ✨ What You Get
+
+A **6-stage compile pipeline** that turns a 30-line YAML spec into a verified, runnable Remotive Behavioral Model:
+
+```
+┌──────────┐   ┌──────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│  YAML    │ → │  IR  │ → │ Recipes  │ → │  Code    │ → │  T1+T2   │ → │  CI      │
+│  Spec    │   │ Type │   │ Registry │   │ Gen (J2) │   │  +T3 OK  │   │  Ready   │
+│ 10–30 ln │   │ Safe │   │ Pattern  │   │ Python   │   │  Verify  │   │  Model   │
+└──────────┘   └──────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+```
+
+- **📝 YAML Spec** — declarative: model, namespaces, handlers
+- **🔍 Typed IR** — Python dataclasses with invariant validation
+- **📋 8 Recipes** — known patterns: direct, toggle, blink, threshold, AND/OR/XOR/NOT
+- **⚙️ Jinja2 Templates** — deterministic Python generation
+- **🧪 3-Layer Verifier** — structural → behavioral → composition, fail-fast
+- **✅ CI-Ready Package** — `__main__.py` + `__init__.py` + `log.py` that runs against a real Remotive broker
+
+---
+
+## 🍳 Features at a Glance
+
+| | Feature | What it does |
+|---|---|---|
+| 🧩 | **Recipe Registry** | 8 built-in patterns covering 80% of ECU handler shapes |
+| 🛡️ | **3-Layer Verifier** | T1 structural, T2 behavioral (with fake Frame + mock restbus), T3 composition |
+| 🔁 | **Deterministic Output** | Same YAML → identical bytes across machines, runs, engineers |
+| 🚦 | **Fail-Fast Pipeline** | T1 fail → skip T2/T3; T2 fail → skip T3. No wasted cycles. |
+| 🧪 | **Novel-Logic Escape Hatch** | `novel_logic: true` → stub with T1 PASS + T3 PASS + warning |
+| 📊 | **JSON Verification Report** | `bmgen verify` emits a structured report for CI / dashboards |
+| 🔌 | **Restbus-Aware** | `RestbusConfig` + `SenderFilter` autogenerated from `restbus:` block |
+| 🪛 | **Tight Layer Boundaries** | `ir/` knows nothing of code, `verifier/` never writes code. Imports blocked at the design level. |
+| 🚗 | **Proven on Real ECUs** | 6-ECU Child Presence Detection pipeline ships in this repo |
 
 ---
 
 ## 📖 Table of Contents
 
-- [Why This Project Exists](#-why-this-project-exists)
-- [The Solution](#-the-solution)
+- [30-Second Quick Start](#-30-second-quick-start)
+- [The Problem This Solves](#-the-problem-this-solves)
+- [What You Get](#-what-you-get)
+- [Features at a Glance](#-features-at-a-glance)
 - [Architecture](#-architecture)
 - [Available Recipes](#-available-recipes)
 - [How to Use](#-how-to-use)
 - [Verification System](#-verification-system)
 - [Real-World Example: Child Presence Detection](#-real-world-example-child-presence-detection)
-- [Future Vision](#-future-vision)
-
----
-
-## 🎯 Why This Project Exists
-
-### The Problem
-
-Modern vehicles contain **6–50+ ECUs** (Electronic Control Units) that communicate via CAN bus. Simulating these ECUs for development, testing, and validation requires writing **Behavioral Model Python code** — async handlers that read CAN signals, apply logic, and write output signals via the Remotive Labs broker.
-
-The current workflow is **manual, error-prone, and non-repeatable**:
-
-```mermaid
-flowchart TD
-    A["📖 Engineer reads ECU spec<br/><i>(PDF, BPMN, requirements)</i>"] --> B["⌨️ Hand-writes Python behavioral model"]
-    B --> C["🪲 Subtle bugs appear:<br/>wrong signal names, missing async,<br/>missing restbus config..."]
-    C --> D["⏱️ Debugs, fixes, re-tests<br/><b>2–4 hours per ECU</b>"]
-    D --> E["⚠️ 6 ECUs × 2-4 hrs = <b>12–24 hours</b> of manual work"]
-
-    F["❌ No guarantee next ECU follows the same pattern"] -.-> E
-    G["❌ No automated verification that code matches spec"] -.-> E
-    H["❌ Same spec → different code (non-deterministic)"] -.-> E
-
-    style E fill:#f66,stroke:#c00,color:#fff
-    style F fill:#fbb,stroke:#c00
-    style G fill:#fbb,stroke:#c00
-    style H fill:#fbb,stroke:#c00
-```
-
-**Three core pain points:**
-
-| Pain Point | Description | Impact |
-|---|---|---|
-| 🔁 **Repetitive patterns** | 80%+ of ECU handlers follow 5-6 known patterns (direct forward, toggle, blink, threshold, logic gates) | Engineers rewrite the same code structure over and over |
-| 🪲 **Silent bugs** | Missing `async`, wrong namespace refs, missing `restbus` config, incorrect `FrameFilter` — these pass syntax check but fail at runtime | Hours of debugging per ECU |
-| 🎲 **Non-deterministic** | Same spec → different code depending on who writes it, when, and how | No reproducibility, no CI guarantee |
-
-### Why Not Just Use LLM/AI Code Generation?
-
-LLM-generated code is **non-deterministic** — the same prompt can produce different code each time. This is unacceptable for safety-critical automotive software where:
-
-- The code must be **verifiable** (every line must pass structural + behavioral + composition checks)
-- The code must be **reproducible** (same spec → same code, always)
-- The code must be **traceable** (every output signal maps to a known recipe pattern)
-
-Agent/RAG layers are planned as a **future augmentation** (helping write specs and discover new patterns), but the core compilation pipeline must remain **deterministic and LLM-free**.
-
----
-
-## 💡 The Solution
-
-### The `bmgen` Compiler Pipeline
-
-```mermaid
-flowchart TD
-    A["📝 Engineer writes YAML spec<br/><i>10–30 lines</i>"] --> B["🔍 bmgen parses YAML → typed IR"]
-    B --> C["✅ Validates invariants"]
-    C --> D["📋 Recipe registry selects pattern"]
-    D --> E["⚙️ Compiler generates Python<br/>from Jinja2 templates"]
-    E --> F["🧪 3-Layer Verifier checks<br/>structural + behavioral + composition"]
-    F --> G{"Result?"}
-    G -->|"PASS"| H["✅ Commit to CI"]
-    G -->|"FAIL"| I["🔄 Fix spec, re-run"]
-
-    J["⏱️ 6 ECUs × 30 sec = <b>3 minutes total</b>"] -.-> H
-    K["✅ Every generated line passes T1/T2/T3"] -.-> H
-    L["✅ Same YAML → same code, <b>always</b>"] -.-> H
-
-    style H fill:#4c4,stroke:#090,color:#fff
-    style I fill:#f66,stroke:#c00,color:#fff
-    style J fill:#eee,stroke:#999
-    style K fill:#eee,stroke:#999
-    style L fill:#eee,stroke:#999
-```
-
-### The Core Invariant
-
-> **No line of generated Python code in the CI path comes from an LLM.**
-> All code comes from templates + recipe logic. Agent assistance may help *write recipes* or *write YAML specs*, but the compiler path remains deterministic.
+- [Roadmap & Future Vision](#-roadmap--future-vision)
+- [Documentation](#-documentation)
+- [Running Tests](#-running-tests)
+- [Project Layout](#-project-layout)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
@@ -293,7 +307,6 @@ flowchart TB
 ### Installation
 
 ```bash
-# Clone and install
 cd remotive-bm-compiler
 pip install -e ".[dev]"
 ```
@@ -666,7 +679,7 @@ _generated/
 
 ---
 
-## 🔮 Future Vision
+## 🔮 Roadmap & Future Vision
 
 ### Phase Roadmap
 
@@ -775,6 +788,49 @@ pytest tests/test_verify_generated.py -v     # Verification pipeline tests
 
 ---
 
+## 🗂️ Project Layout
+
+```
+.
+├── README.md                     ← you are here
+├── CLAUDE.md                     ← contributor / agent guidance
+├── docs/
+│   └── architecture/             ← MVP plan, ARCHITECTURE, DATAFLOW, IR_SCHEMA, VERIFIER_DESIGN, WORKFLOW
+├── remotive-bm-compiler/         ← the compiler package
+│   ├── bmgen/                    ← Python source
+│   │   ├── ir/                   ← YAML → typed IR
+│   │   ├── recipes/              ← pattern registry
+│   │   ├── compiler/             ← Jinja2 codegen
+│   │   ├── verifier/             ← T1 / T2 / T3
+│   │   └── cli.py                ← `bmgen` entry point
+│   ├── examples/                 ← YAML specs (BCM, DMS, CPD, …)
+│   ├── tests/                    ← pytest suite
+│   └── pyproject.toml
+├── vehicle_functions/            ← live CPD / OCS examples
+├── test_env/                     ← docker-compose + per-ECU test harnesses
+└── .github/workflows/verify.yml  ← CI: bmgen verify on every push
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome. The most useful things right now:
+
+1. **Add a recipe** — open a PR with a new file under `remotive-bm-compiler/bmgen/recipes/` and register it in `registry.py`. See [VERIFIER_DESIGN.md](docs/architecture/VERIFIER_DESIGN.md) for what T1/T2/T3 must check.
+2. **Add an example** — drop a new YAML spec under `remotive-bm-compiler/examples/` that exercises a real ECU behavior.
+3. **Improve the verifier** — T1/T2/T3 are the safety net. Tighten them.
+
+The invariant holds across all of this: **no LLM output enters the compile path**. If your PR needs an LLM call, it's the wrong layer.
+
+---
+
 ## 📜 License
 
-MIT
+MIT — see [`pyproject.toml`](remotive-bm-compiler/pyproject.toml).
+
+---
+
+<p align="center">
+  <sub>Built for engineers who want their spec to be the source of truth — and their CI to be the proof.</sub>
+</p>
