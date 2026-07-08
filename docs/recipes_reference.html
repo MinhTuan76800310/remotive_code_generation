@@ -186,8 +186,8 @@
     <h1>Recipes — How to Use, How to Add, Example Use Cases</h1>
     <p>A <em>recipe</em> is a named, deterministic ECU behavior pattern. The bmgen compiler picks a recipe by the <code>pattern:</code> field in your YAML handler, validates the handler's shape against that recipe, and renders a fixed Jinja2 template to produce the handler's Python method. This document is the complete reference: the dispatch pipeline, every existing recipe with a real example, and the step-by-step recipe for adding a new one.</p>
     <div class="verdict">
-      <div class="verdict-card"><span class="big">8</span><strong>Recipes registered</strong><span>6 per-handler + 1 model-level<br/>(LogicGate = 4 instances)</span></div>
-      <div class="verdict-card"><span class="big">5</span><strong>Handler templates</strong><span>direct · logic · toggle · blink · websocket</span></div>
+      <div class="verdict-card"><span class="big">10</span><strong>Recipes registered</strong><span>6 per-handler classes + 1 model-level<br/>(LogicGate = 4 registry entries)</span></div>
+      <div class="verdict-card"><span class="big">6</span><strong>Handler templates</strong><span>direct · logic · toggle · blink · websocket · weighted</span></div>
       <div class="verdict-card"><span class="big">2</span><strong>Files to touch</strong><span>to add a new recipe<br/>(module + 1 register line)</span></div>
       <div class="verdict-card"><span class="big">1</span><strong>Behavioral core</strong><span><code>output_value_expr()</code><br/>defines what's written</span></div>
     </div>
@@ -206,6 +206,7 @@
     <a href="#direct">DirectSignalMapping</a>
     <a href="#threshold">ThresholdMapping</a>
     <a href="#logic">LogicAnd / Or / Xor / Not</a>
+    <a href="#weighted">WeightedLogOdds</a>
     <a href="#toggle">ToggleButtonState</a>
     <a href="#blink">PeriodicBlinkingOutput</a>
     <a href="#ws">WebsocketBridge</a>
@@ -279,12 +280,13 @@
         <div class="metric"><b><code>template_name</code></b><span>which <code>handler_*.py.j2</code> renders this handler</span></div>
       </div>
       <div class="card">
-        <h3>The 5 handler templates</h3>
+        <h3>The 6 handler templates</h3>
         <div class="metric"><b><code>handler_direct.py.j2</code></b><span>read 1 signal → <code>update_signals</code>. Used by Direct + Threshold</span></div>
         <div class="metric"><b><code>handler_logic.py.j2</code></b><span>read N signals → <code>update_signals</code>. Used by 4 logic gates</span></div>
         <div class="metric"><b><code>handler_toggle.py.j2</code></b><span>read 1 → toggle bool state → <code>update_signals</code></span></div>
         <div class="metric"><b><code>handler_blink.py.j2</code></b><span>read 1 → start/stop ticker → blink loop</span></div>
         <div class="metric"><b><code>handler_websocket.py.j2</code></b><span>background ws loop → <code>update_signals</code></span></div>
+        <div class="metric"><b><code>handler_weighted.py.j2</code></b><span>multi-frame fan-in → latch bools → Σ w·bool → <code>update_signals</code>. Used by WeightedLogOdds</span></div>
       </div>
     </div>
     <p class="evidence">Evidence: <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/base.py#L29">base.py:29 (Recipe ABC)</a> · templates in <a class="src" href="../../remotive-bm-compiler/bmgen/compiler/templates/">bmgen/compiler/templates/</a></p>
@@ -336,6 +338,7 @@ uv run bmgen verify gen/ --spec seat_ecu.yaml</code></pre>
         <tr><td><code>LogicOr</code></td><td><span class="badge teal">handler</span></td><td>≥2</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>any-true gate</td></tr>
         <tr><td><code>LogicXor</code></td><td><span class="badge teal">handler</span></td><td>≥2</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>odd-count-true gate</td></tr>
         <tr><td><code>LogicNot</code></td><td><span class="badge teal">handler</span></td><td>1</td><td>no</td><td>no</td><td><code>handler_logic</code></td><td>invert one signal</td></tr>
+        <tr><td><code>WeightedLogOdds</code></td><td><span class="badge teal">handler</span></td><td>≥1 (fan-in)</td><td><span class="badge info">latched</span></td><td>no</td><td><code>handler_weighted</code></td><td>multi-frame CAD decision (Σ w·bool ≥ θ)</td></tr>
         <tr><td><code>ToggleButtonState</code></td><td><span class="badge teal">handler</span></td><td>1</td><td><span class="badge info">bool</span></td><td>no</td><td><code>handler_toggle</code></td><td>press → toggle hazard on/off</td></tr>
         <tr><td><code>PeriodicBlinkingOutput</code></td><td><span class="badge teal">handler</span></td><td>1</td><td><span class="badge info">bool</span></td><td><span class="badge warn">yes</span></td><td><code>handler_blink</code></td><td>turn-signal blinker</td></tr>
         <tr><td><code>WebsocketBridge</code></td><td><span class="badge purp">model-level</span></td><td>0 (ws)</td><td>no</td><td><span class="badge warn">bg task</span></td><td><code>handler_websocket</code></td><td>external camera ws → CAN</td></tr>
@@ -466,33 +469,41 @@ handlers:
     </div>
     <div class="body">
       <p class="desc">Combine multiple input signals from <strong>one frame</strong> with a boolean operator and write a <code>0</code>/<code>1</code> result. All four are the same class (<code>LogicGateRecipe</code>) parameterized by operator — only <code>output_value_expr</code> differs. Stateless: output depends only on the current frame.</p>
-      <div class="cols">
-        <div>
-          <h4>Arity</h4>
-          <dl class="reqs">
-            <dt><code>LogicAnd / Or / Xor</code></dt><dd>≥ 2 inputs (N-ary)</dd>
-            <dt><code>LogicNot</code></dt><dd>exactly 1 input</dd>
-            <dt>Outputs</dt><dd>≥ 1</dd>
-            <dt>State / Periodic</dt><dd>none</dd>
-          </dl>
-          <h4>Value written</h4>
-          <dl class="reqs">
-            <dt>AND</dt><dd><code>1 if (a and b and ...) else 0</code></dd>
-            <dt>OR</dt><dd><code>1 if (a or b or ...) else 0</code></dd>
-            <dt>XOR</dt><dd><code>1 if (sum of truthy) % 2 == 1 else 0</code></dd>
-            <dt>NOT</dt><dd><code>1 if not a else 0</code></dd>
-          </dl>
-          <h4>Generated handler (AND)</h4>
+
+      <h4>Arity</h4>
+      <dl class="reqs">
+        <dt><code>LogicAnd / Or / Xor</code></dt><dd>≥ 2 inputs (N-ary)</dd>
+        <dt><code>LogicNot</code></dt><dd>exactly 1 input</dd>
+        <dt>Outputs</dt><dd>≥ 1</dd>
+        <dt>State / Periodic</dt><dd>none</dd>
+      </dl>
+
+      <h4>Truth-table summary</h4>
+      <dl class="reqs">
+        <dt>AND</dt><dd>1 if <em>all</em> inputs truthy</dd>
+        <dt>OR</dt><dd>1 if <em>any</em> input truthy</dd>
+        <dt>XOR</dt><dd>1 if <em>odd count</em> truthy</dd>
+        <dt>NOT</dt><dd>1 if <em>single</em> input falsy</dd>
+      </dl>
+
+      <h4>Value written</h4>
+      <dl class="reqs">
+        <dt>AND</dt><dd><code>1 if (a and b and ...) else 0</code></dd>
+        <dt>OR</dt><dd><code>1 if (a or b or ...) else 0</code></dd>
+        <dt>XOR</dt><dd><code>1 if (sum of truthy) % 2 == 1 else 0</code></dd>
+        <dt>NOT</dt><dd><code>1 if not a else 0</code></dd>
+      </dl>
+
+      <h4>Generated handler (AND)</h4>
 <pre><code>async def on_logic_and(self, frame: Frame) -> None:
     logic_inputs_signal = frame.signals["LogicInputs.A"]
     logic_inputs_signal_2 = frame.signals["LogicInputs.B"]
     await self.output_can_0.restbus.update_signals(
         ("LogicOutputs.AND_Result", 1 if (logic_inputs_signal and logic_inputs_signal_2) else 0),
     )</code></pre>
-        </div>
-        <div>
-          <h4>Example use case — boolean fusion in one frame</h4>
-          <p>A logic ECU that must compute several boolean gates over a single <code>LogicInputs</code> frame carrying flags A and B. Each gate is a separate handler on the same frame; the compiler reads <em>N</em> signals from that one frame per handler.</p>
+
+      <h4>Example use case — boolean fusion in one frame</h4>
+      <p>A logic ECU that must compute several boolean gates over a single <code>LogicInputs</code> frame carrying flags A and B. Each gate is a separate handler on the same frame; the compiler reads <em>N</em> signals from that one frame per handler.</p>
 <pre><code>handlers:
   - name: on_logic_and
     pattern: LogicAnd
@@ -525,10 +536,70 @@ handlers:
     output:
       namespace: LGCM-OutputCan0
       signals: [LogicOutputs.NOT_Result]</code></pre>
+
+      <div class="callout">
+        <strong>Multi-input needs <code>signals:</code> (list).</strong> A single-input gate like <code>LogicNot</code> uses the scalar <code>signal:</code> key; multi-input gates use the list <code>signals:</code> key. The builder accepts both and the recipe's <code>validate</code> enforces the arity. Variable-name collisions in one frame (e.g. <code>LogicInputs.A</code> and <code>LogicInputs.B</code> both derive to <code>logic_inputs_signal</code>) are auto-disambiguated by the builder.
+      </div>
+
+      <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/logic_gate.py#L36">logic_gate.py:36</a> · example <a class="src" href="../../remotive-bm-compiler/examples/lgcm_logic_gates.yaml">examples/lgcm_logic_gates.yaml</a></p>
+    </div>
+  </div>
+
+  <!-- =================== WEIGHTED LOG ODDS =================== -->
+  <div id="weighted" class="recipe-card">
+    <div class="head">
+      <div class="title"><code>WeightedLogOdds</code></div>
+      <div class="badges"><span class="badge teal">handler</span><span class="badge warn">stateful (latched)</span><span class="badge info">multi-frame</span><span class="badge good">CAD</span></div>
+    </div>
+    <div class="body">
+      <p class="desc">Compute a weighted sum of <em>bool(input<sub>i</sub>)</em> across multiple CAN frames (possibly different namespaces), compare to a threshold, and write <code>0</code>/<code>1</code> to one or more output groups. Values are <strong>latched</strong> in instance state so the output reflects the <em>last seen</em> state of every input, not just the one in the current frame. This is the recipe behind the CAD (Child-Activity-Detection) decision in the live Child Presence Detection pipeline.</p>
+      <div class="cols">
+        <div>
+          <h4>Requirements</h4>
+          <dl class="reqs">
+            <dt>Inputs</dt><dd>≥ 1 <code>weighted_inputs</code>, each with <code>namespace</code>, <code>signal</code>, <code>weight</code>, <code>frame_filter</code></dd>
+            <dt>Outputs</dt><dd>≥ 1 output group (multi-namespace OK)</dd>
+            <dt>State</dt><dd><span class="badge info">latched</span> — one bool per input is held in <code>self._&lt;var&gt;_latched</code>; on reboot defaults to <code>False</code></dd>
+            <dt>Periodic</dt><dd>none</dd>
+            <dt><code>weighted_threshold</code></dt><dd>required float — the threshold θ that Σ(w<sub>i</sub> · bool(v<sub>i</sub>)) must meet or exceed</dd>
+            <dt>Pattern shape</dt><dd>YAML <code>pattern:</code> is a list whose first entry names the recipe and carries <code>weights:</code> + <code>threshold:</code></dd>
+          </dl>
+          <h4>Value written</h4>
+          <p><code>1 if (w₁·bool(v₁) + w₂·bool(v₂) + …) ≥ θ else 0</code>, with each <code>v<sub>i</sub></code> = the last-seen bool of that input signal.</p>
+          <h4>Generated handler</h4>
+<pre><code>async def Classify_Child(self, frame: Frame) -> None:
+    if "SeatInput.SeatOccupied" in frame.signals:
+        self._seat_occupied_latched = bool(frame.signals["SeatInput.SeatOccupied"])
+    if "SeatInput.AdultWeightPresent" in frame.signals:
+        self._adult_weight_present_latched = bool(frame.signals["SeatInput.AdultWeightPresent"])
+    _weighted_sum = (1.0 * (1 if self._seat_occupied_latched else 0)) + (-1.0 * (1 if self._adult_weight_present_latched else 0))
+    await self.seat_ocs_cpd_can_0.restbus.update_signals(
+        ("OccupantClass.ChildPresent", 1 if _weighted_sum >= 1.0 else 0),
+    )</code></pre>
+        </div>
+        <div>
+          <h4>Example use case — CAD-style child-presence decision</h4>
+          <p>The SeatECU has a seat-occupied flag and an adult-weight-present flag on the same CAN bus. The CAD rule says: <em>"child present iff occupied AND NOT adult"</em>. Modeling it as <code>(+1 · occupied) + (−1 · adult) ≥ 1</code> gives the same outcome with no hand-written boolean glue: occupied &amp; child → 1, occupied &amp; adult → 0, empty → 0. Negative weights are a first-class feature, not a workaround.</p>
+<pre><code>handlers:
+  - name: Classify_Child
+    pattern:
+      - name: WeightedLogOdds
+        weights:
+          SeatInput.SeatOccupied: 1.0
+          SeatInput.AdultWeightPresent: -1.0
+        threshold: 1.0
+    input:
+      - namespace: SEAT-CpdCan0
+        signal: SeatInput.SeatOccupied
+      - namespace: SEAT-CpdCan0
+        signal: SeatInput.AdultWeightPresent
+    output:
+      - namespace: SEAT-OCS-CpdCan0
+        signals: [OccupantClass.ChildPresent]</code></pre>
           <div class="callout">
-            <strong>Multi-input needs <code>signals:</code> (list).</strong> A single-input gate like <code>LogicNot</code> uses the scalar <code>signal:</code> key; multi-input gates use the list <code>signals:</code> key. The builder accepts both and the recipe's <code>validate</code> enforces the arity. Variable-name collisions in one frame (e.g. <code>LogicInputs.A</code> and <code>LogicInputs.B</code> both derive to <code>logic_inputs_signal</code>) are auto-disambiguated by the builder.
+            <strong>One method, N input frames.</strong> <code>main.py.j2</code> registers one <code>create_input_handler</code> per unique <code>(namespace, frame_filter)</code> pair, <em>all pointing to the same method</em>. Each invocation latches whichever signal is in <code>frame.signals</code>, then recomputes the sum and writes all output groups. So a WeightedLogOdds handler can fan-in across frames that arrive independently — it does <em>not</em> require a single composite frame the way <code>LogicAnd</code> does.
           </div>
-          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/logic_gate.py#L36">logic_gate.py:36</a> · example <a class="src" href="../../remotive-bm-compiler/examples/lgcm_logic_gates.yaml">examples/lgcm_logic_gates.yaml</a></p>
+          <p class="evidence">Evidence: recipe <a class="src" href="../../remotive-bm-compiler/bmgen/recipes/weighted_log_odds.py#L54">weighted_log_odds.py:54</a> · template <a class="src" href="../../remotive-bm-compiler/bmgen/compiler/templates/handler_weighted.py.j2">handler_weighted.py.j2</a> · example <a class="src" href="../../vehicle_functions/occupant_classification/inc_schema/SWC_classify_occupant.yaml">vehicle_functions/occupant_classification/inc_schema/SWC_classify_occupant.yaml</a></p>
         </div>
       </div>
     </div>
@@ -862,7 +933,7 @@ def create_default_registry() -> RecipeRegistry:
     return registry</code></pre>
 
     <h3>Step 3 (only if needed) — add a template</h3>
-    <p>If none of the 5 existing templates fit, add <code>bmgen/compiler/templates/handler_&lt;your&gt;.py.j2</code>. The template receives exactly the keys you put in <code>build_context().context</code> plus <code>output_namespace_var</code> (filled by the context_builder). Reusing <code>handler_logic.py.j2</code> (multi-input read → <code>update_signals</code>) or <code>handler_direct.py.j2</code> (single-input read → <code>update_signals</code>) covers most stateless recipes.</p>
+    <p>If none of the 6 existing templates fit, add <code>bmgen/compiler/templates/handler_&lt;your&gt;.py.j2</code>. The template receives exactly the keys you put in <code>build_context().context</code> plus <code>output_namespace_var</code> (filled by the context_builder). Reusing <code>handler_logic.py.j2</code> (multi-input read → <code>update_signals</code>) or <code>handler_direct.py.j2</code> (single-input read → <code>update_signals</code>) covers most stateless recipes.</p>
 
     <div class="callout good">
       <strong>That's it — no other edits.</strong> Invariant 9 reads <code>create_default_registry().known_patterns()</code> at validation time, so your recipe is immediately a recognized pattern. <code>bmgen recipes</code> will list it via <code>required_fields()</code>. <code>_apply_value_exprs</code> and <code>build_template_context</code> dispatch on the registry key, so your <code>output_value_expr</code> and <code>build_context</code> are picked up with zero wiring.
@@ -895,6 +966,7 @@ def create_default_registry() -> RecipeRegistry:
         <div class="metric"><b>Press button → toggle</b><span><code>ToggleButtonState</code></span></div>
         <div class="metric"><b>Enable → blink periodically</b><span><code>PeriodicBlinkingOutput</code></span></div>
         <div class="metric"><b>External ws → CAN</b><span><code>WebsocketBridge</code></span></div>
+        <div class="metric"><b>Multi-frame weighted CAD decision</b><span><code>WeightedLogOdds</code></span></div>
         <div class="metric"><b>None of the above</b><span><code>novel_logic: true</code></span></div>
       </div>
       <div class="card">
@@ -906,6 +978,8 @@ def create_default_registry() -> RecipeRegistry:
           <li><strong><code>cleanup: true</code> is mandatory</strong> on periodic tasks and websocket listeners.</li>
           <li><strong>Multi-input uses <code>signals:</code></strong> (list); single-input uses <code>signal:</code> (scalar). Both accepted by the builder.</li>
           <li><strong>WebsocketBridge is model-level</strong> — declare under <code>websocket_listeners:</code>, not <code>handlers:</code>.</li>
+          <li><strong>WeightedLogOdds values are latched.</strong> The output reflects the last-seen bool of every input, not the current frame — that is the point, and the reason the recipe is stateful even though no explicit <code>state:</code> block is declared.</li>
+          <li><strong>WeightedLogOdds YAML shape is a list.</strong> The <code>pattern:</code> field is a list whose first element names the recipe and carries <code>weights:</code> + <code>threshold:</code>. Inputs use the list form (<code>input: [{namespace, signal}, …]</code>) not the single-frame scalar.</li>
           <li><strong>novel_logic still needs namespaces</strong> — Invariant 3/4 are not exempted.</li>
         </ul>
       </div>
