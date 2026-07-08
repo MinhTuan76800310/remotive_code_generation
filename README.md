@@ -71,7 +71,7 @@ A **6-stage compile pipeline** that turns a 30-line YAML spec into a verified, r
 
 - **📝 YAML Spec** — declarative: model, namespaces, handlers
 - **🔍 Typed IR** — Python dataclasses with invariant validation
-- **📋 8 Recipes** — known patterns: direct, toggle, blink, threshold, AND/OR/XOR/NOT
+- **📋 10 Recipes** — known patterns: direct, toggle, blink, threshold, AND/OR/XOR/NOT, websocket bridge, weighted log-odds (CAD)
 - **⚙️ Jinja2 Templates** — deterministic Python generation
 - **🧪 3-Layer Verifier** — structural → behavioral → composition, fail-fast
 - **✅ CI-Ready Package** — `__main__.py` + `__init__.py` + `log.py` that runs against a real Remotive broker
@@ -82,7 +82,7 @@ A **6-stage compile pipeline** that turns a 30-line YAML spec into a verified, r
 
 | | Feature | What it does |
 |---|---|---|
-| 🧩 | **Recipe Registry** | 8 built-in patterns covering 80% of ECU handler shapes |
+| 🧩 | **Recipe Registry** | 10 built-in patterns covering 80%+ of ECU handler shapes (8 recipe classes; `LogicGate` parameterised by 4 operators) |
 | 🛡️ | **3-Layer Verifier** | T1 structural, T2 behavioral (with fake Frame + mock restbus), T3 composition |
 | 🔁 | **Deterministic Output** | Same YAML → identical bytes across machines, runs, engineers |
 | 🚦 | **Fail-Fast Pipeline** | T1 fail → skip T2/T3; T2 fail → skip T3. No wasted cycles. |
@@ -275,6 +275,8 @@ Recipes are **known behavioral patterns** — the building blocks of ECU logic.
 | **LogicOr** | `LogicOr` | ≥2 | ≥1 | ❌ | OR of N input signals → 0/1 result | Any door open → warning |
 | **LogicXor** | `LogicXor` | ≥2 | ≥1 | ❌ | XOR of N inputs (odd true) → 0/1 result | Exclusive mode selection |
 | **LogicNot** | `LogicNot` | 1 | ≥1 | ❌ | NOT (invert) single input → 0/1 result | Invert enable → disable |
+| **WeightedLogOdds** | `WeightedLogOdds` | ≥1 (fan-in) | ≥1 | ✅ (latched) | Weighted sum of bool(input_i) across multiple CAN frames → 0/1 when sum ≥ threshold. Values latched so output reflects the LAST SEEN state of every input | CAD-style child-presence decision in `SWC_CAD_logic.yaml` (seat, camera, airbag-status fanned in) |
+| **WebsocketBridge** | `WebsocketBridge` | 0 (external) | ≥1 | ❌ | Bridge an external WebSocket stream onto a CAN restbus: read JSON, map keys → restbus signals, publish. Reconnects with a warning on error. **Model-level background task**, not a CAN-frame handler | `examples/dms_camera_websocket.yaml` — DMS camera pushing frames into the simulated bus |
 
 ### Recipe Visual Pattern Map
 
@@ -283,12 +285,14 @@ flowchart TB
     subgraph Stateless["Stateless Recipes"]
         DSM["<b>DirectSignalMapping</b><br/>Input=1 ──► Out1, Out2<br/><i>same value forwarded</i>"]
         TM["<b>ThresholdMapping</b><br/>Input=7 ──► 1 if > 5.0 else 0<br/><i>analog → boolean</i>"]
-        LG["<b>Logic Gates</b><br/>A, B ──► AND/OR/XOR ──► 0/1<br/><i>boolean combinations</i>"]
+        LG["<b>Logic Gates</b><br/>A, B ──► AND/OR/XOR/NOT ──► 0/1<br/><i>boolean combinations</i>"]
+        WB["<b>WebsocketBridge</b><br/>ws:// ──► restbus<br/><i>model-level task, not handler</i>"]
     end
 
     subgraph Stateful["Stateful Recipes"]
         TBS["<b>ToggleButtonState</b><br/>Press=1 ──► Toggle(bool) ──► 1/0<br/><i>press ON, press again OFF</i>"]
         PBO["<b>PeriodicBlinkingOutput</b><br/>Enable=1 ──► blink_enabled ──► ◐◑◐◑<br/><i>ticker at 1s interval</i>"]
+        WLO["<b>WeightedLogOdds</b><br/>Inputs[Σw·x] ──► 1 if ≥ θ else 0<br/><i>CAD decision across fan-in</i>"]
     end
 
     style Stateless fill:#ddf,stroke:#369,color:#333
@@ -296,8 +300,10 @@ flowchart TB
     style DSM fill:#69f,stroke:#369,color:#fff
     style TM fill:#69f,stroke:#369,color:#fff
     style LG fill:#69f,stroke:#369,color:#fff
+    style WB fill:#69f,stroke:#369,color:#fff
     style TBS fill:#f9f,stroke:#909,color:#333
     style PBO fill:#f9f,stroke:#909,color:#333
+    style WLO fill:#f9f,stroke:#909,color:#333
 ```
 
 ---
@@ -311,77 +317,114 @@ cd remotive-bm-compiler
 pip install -e ".[dev]"
 ```
 
-### Step 1: Write a YAML Spec
+### Step 1: Write an ECU spec + Software-Component (SWC) specs
 
-Create a small YAML file describing ECU behavior:
+The current schema is **compositional**: an **ECU spec** declares the broker name and namespaces, then references one or more **SWC specs** that hold the actual handlers. This is the schema used in `vehicle_functions/child_detection/inc_schema/` and `vehicle_functions/occupant_classification/inc_schema/`.
 
+`vehicle_functions/occupant_classification/inc_schema/seatECU.yaml`:
 ```yaml
-# examples/bcm_direct.yaml
-model:
-  name: BCM
-  ecu_name: BCM
+ecu:
+  name: SeatECU
+  broker_name: SEAT
 
-namespaces:
-  - name: BCM-BodyCan0
-    type: can
-    role: output
-    restbus:
-      sender_filter: BCM
-  - name: BCM-DriverCan0
-    type: can
-    role: input
+namespace_types:
+  SEAT-CpdCan0: can
+  SEAT-OCS-CpdCan0: can
 
+software_components:
+  - ./SWC_seat_sensors_preprocessing.yaml
+  - ./SWC_seat_buckle_forward.yaml
+  - ./SWC_classify_occupant.yaml
+```
+
+`SWC_classify_occupant.yaml` (one of the referenced SWCs) — three handlers, two patterns:
+```yaml
 handlers:
-  - name: on_hazard_light
+  - name: Classify_Adult
     pattern: DirectSignalMapping
     input:
-      namespace: BCM-DriverCan0
-      frame_filter: HazardLightButton
-      signal: HazardLightButton.HazardLightButton
+      namespace: SEAT-CpdCan0
+      signal: SeatInput.AdultWeightPresent
     output:
-      namespace: BCM-BodyCan0
-      signals:
-        - TurnLightControl.RightTurnLightRequest
-        - TurnLightControl.LeftTurnLightRequest
+      - namespace: SEAT-OCS-CpdCan0
+        signals: [OccupantClass.AdultPresent]
+
+  #   (+1 * occupied) + (-1 * adult) >= 1
+  #   occupied & child : 1 + 0 = 1 >= 1 -> True
+  #   occupied & adult : 1 - 1 = 0 <  1 -> False
+  #   empty            : 0 + 0 = 0 <  1 -> False
+  - name: Classify_Child
+    pattern:
+      - name: WeightedLogOdds
+        weights:
+          SeatInput.SeatOccupied: 1.0
+          SeatInput.AdultWeightPresent: -1.0
+        threshold: 1.0
+    input:
+      - namespace: SEAT-CpdCan0
+        signal: SeatInput.SeatOccupied
+      - namespace: SEAT-CpdCan0
+        signal: SeatInput.AdultWeightPresent
+    output:
+      - namespace: SEAT-OCS-CpdCan0
+        signals: [OccupantClass.ChildPresent]
+
+  - name: Classify_Empty
+    pattern: DirectSignalMapping
+    input:
+      namespace: SEAT-CpdCan0
+      signal: SeatInput.EmptySeat
+    output:
+      - namespace: SEAT-OCS-CpdCan0
+        signals: [OccupantClass.EmptySeat]
 ```
+
+> **Legacy single-file specs** (`examples/bcm_direct.yaml`, `examples/bcm_toggle.yaml`, …) still work and exercise the same recipes in a flatter form — useful for tutorials, less so for real ECUs.
 
 ### Step 2: Parse & Validate
 
 ```bash
-bmgen parse examples/bcm_direct.yaml
+bmgen parse vehicle_functions/occupant_classification/inc_schema/seatECU.yaml
 ```
 
 Output:
 ```text
-Model: BCM (ECU: BCM)
+Model: SeatECU (ECU: SeatECU)
 Namespaces: 2
-  - BCM-BodyCan0 (can, role=output, var=body_can_0) (restbus: sender_filter=BCM)
-  - BCM-DriverCan0 (can, role=input, var=driver_can_0)
-Handlers: 1
-  - on_hazard_light (pattern=DirectSignalMapping, novel_logic=False)
-    Input: BCM-DriverCan0 / HazardLightButton / HazardLightButton.HazardLightButton
-    Output: BCM-BodyCan0 / ['TurnLightControl.RightTurnLightRequest', 'TurnLightControl.LeftTurnLightRequest']
+  - SEAT-CpdCan0 (can, role=can, var=seat_cpd_can_0)
+  - SEAT-OCS-CpdCan0 (can, role=can, var=seat_ocs_cpd_can_0)
+Handlers: 4
+  - Classify_Adult (pattern=DirectSignalMapping, novel_logic=False)
+    Input: SEAT-CpdCan0 / <no frame> / SeatInput.AdultWeightPresent
+    Output: SEAT-OCS-CpdCan0 / ['OccupantClass.AdultPresent']
+  - Classify_Child (pattern=WeightedLogOdds, novel_logic=False)
+    Input: fan-in (2 signals across 1 namespaces: SEAT-CpdCan0)
+    Output: SEAT-OCS-CpdCan0 / ['OccupantClass.ChildPresent']
+  - Classify_Empty (pattern=DirectSignalMapping, novel_logic=False)
+    ...
 Validation: PASS
 ```
 
 ### Step 3: Generate Code
 
 ```bash
-bmgen generate examples/bcm_direct.yaml --out generated/
+bmgen generate vehicle_functions/occupant_classification/inc_schema/seatECU.yaml \
+  --out generated/seat_ecu
 ```
 
 Output:
 ```text
-Generated 3 files in generated/:
-  - bcm/__main__.py
-  - bcm/__init__.py
-  - bcm/log.py
+Generated 3 files in generated/seat_ecu/seatecu/:
+  - __main__.py
+  - __init__.py
+  - log.py
 ```
 
 ### Step 4: Verify Generated Code
 
 ```bash
-bmgen verify generated/ --spec examples/bcm_direct.yaml
+bmgen verify generated/seat_ecu \
+  --spec vehicle_functions/occupant_classification/inc_schema/seatECU.yaml
 ```
 
 Output:
@@ -656,10 +699,10 @@ flowchart TB
 
 ### Generated Models
 
-The 6 ECU specs in `examples/cpd/` compile into 6 verified behavioral models in `_generated/`:
+Two flavours live in this repo. The **legacy single-file pipeline** still runs end-to-end:
 
 ```bash
-# Generate all 6 CPD models
+# Generate all 6 CPD models (legacy: model/namespaces/handlers)
 for yaml in examples/cpd/*.yaml; do
   slug=$(basename "$yaml" .yaml)
   bmgen generate "$yaml" --out "_generated/$slug"
@@ -674,10 +717,38 @@ _generated/
 ├── central_computer/ ← LogicAnd + LogicOr (decision logic)
 ├── cockpit_ecu/    ← DirectSignalMapping + ToggleButtonState (warning)
 ├── subecu_seat/    ← ThresholdMapping (weight → child detected)
-├── zonal_ecu/      ← LogicOr + DirectSignalMapping (central coordinator)
+└── zonal_ecu/      ← LogicOr + DirectSignalMapping (central coordinator)
 ```
 
----
+The **canonical SWC-composition pipeline** drives the live `vehicle_functions/`:
+
+```bash
+# Child Presence Detection — 5 ECUs composed from inc_schema SWCs
+bmgen generate vehicle_functions/child_detection/inc_schema/seatECU.yaml \
+  --out _generated_v2/seat_ecu
+bmgen generate vehicle_functions/child_detection/inc_schema/airbagControlUnit.yaml \
+  --out _generated_v2/airbag_control_unit
+# …same for centralHPC, cockpitHMIECU, driver_monitoringECU
+```
+
+```
+vehicle_functions/
+├── child_detection/
+│   ├── inc_schema/                ← ECU + SWC YAMLs (seatECU, airbagControlUnit, centralHPC,
+│   │                                cockpitHMIECU, driver_monitoringECU + 8 SWC_*.yaml)
+│   └── generated/seatecu/         ← `bmgen generate` output
+└── occupant_classification/
+    ├── inc_schema/                ← 3 SWC_*.yaml composing the SeatECU
+    └── generated/seatecu/
+
+_generated_v2/
+├── airbag_control_unit/    ← SWC_apply_airbag_control_command + …
+├── central_hpc/            ← CAD decision composition
+├── cockpit_hmi_ecu/        ← warning + child-alert forwarding
+├── driver_monitoring_ecu/  ← camera preprocessing
+└── seat_ecu/               ← seat sensors preprocessing + WeightedLogOdds classify
+```
+
 
 ## 🔮 Roadmap & Future Vision
 
@@ -685,7 +756,7 @@ _generated/
 
 ```mermaid
 flowchart LR
-    P1["✅ Phase 1<br/><b>MVP</b><br/>Deterministic Compiler<br/>+ 3-Layer Verifier<br/>8 recipes<br/>6 CPD ECU models"]
+    P1["✅ Phase 1<br/><b>MVP</b><br/>Deterministic Compiler<br/>+ 3-Layer Verifier<br/>10 recipes<br/>SWC composition<br/>6 CPD ECU models"]
     P2["🔜 Phase 2<br/><b>Recipe Expansion</b><br/>SOME/IP, LIN bus<br/>State machines, Debounce<br/>Analog mapping<br/>Priority override"]
     P3["🔮 Phase 3<br/><b>Agent/RAG</b><br/>Pattern discovery<br/>Spec writing assist<br/>Novel logic proposals<br/>MCP integration"]
     P4["🌟 Phase 4<br/><b>Full Platform</b><br/>Topology generation<br/>End-to-end CI<br/>Fleet simulation<br/>ISO 26262 safety case"]
@@ -702,10 +773,11 @@ flowchart LR
 
 **Phase 1 — Current MVP ✅**
 - YAML → Typed IR → Recipe Registry → Jinja2 Templates
-- 8 recipes: Direct, Toggle, Blink, Threshold, LogicAnd/Or/Xor/Not
+- 10 recipes: Direct, Toggle, Blink, Threshold, LogicAnd/Or/Xor/Not, WebsocketBridge, WeightedLogOdds
+- SWC composition: ECU spec → references one or more software-component YAMLs (the canonical authoring pattern)
 - T1/T2/T3 verification with fail-fast pipeline
 - CI integration: `bmgen verify` blocks merges on FAIL
-- Real-world proof: 6 CPD ECU models verified
+- Real-world proof: 6 CPD ECU models verified (in `examples/cpd/` → `_generated/`) plus `vehicle_functions/<ecu>/inc_schema/` → `_generated_v2/`
 
 **Phase 2 — Recipe Expansion 🔜**
 - Multi-frame handlers (SOME/IP service calls)
@@ -780,10 +852,14 @@ pip install -e ".[dev]"
 # Run full test suite
 pytest tests/ -v
 
-# Run specific test categories
-pytest tests/test_ir_validation.py -v       # IR invariant tests
+# Run individual test files
+pytest tests/test_ir_validation.py          -v  # IR invariant tests
 pytest tests/test_compile_direct_mapping.py -v  # DirectSignalMapping generation
-pytest tests/test_verify_generated.py -v     # Verification pipeline tests
+pytest tests/test_threshold_mapping.py      -v  # ThresholdMapping generation
+pytest tests/test_multi_output.py           -v  # Multi-signal output wiring
+pytest tests/test_websocket_bridge.py       -v  # WebsocketBridge model-level task
+pytest tests/test_new_schema.py             -v  # ECU + SWC composition (new schema)
+pytest tests/test_verify_generated.py       -v  # T1/T2/T3 verification pipeline
 ```
 
 ---
@@ -799,14 +875,23 @@ pytest tests/test_verify_generated.py -v     # Verification pipeline tests
 ├── remotive-bm-compiler/         ← the compiler package
 │   ├── bmgen/                    ← Python source
 │   │   ├── ir/                   ← YAML → typed IR
-│   │   ├── recipes/              ← pattern registry
+│   │   ├── recipes/              ← 10 patterns: direct / toggle / blink / threshold /
+│   │   │                          logic (and/or/xor/not) / websocket_bridge / weighted_log_odds
 │   │   ├── compiler/             ← Jinja2 codegen
 │   │   ├── verifier/             ← T1 / T2 / T3
 │   │   └── cli.py                ← `bmgen` entry point
-│   ├── examples/                 ← YAML specs (BCM, DMS, CPD, …)
-│   ├── tests/                    ← pytest suite
+│   ├── examples/                 ← YAML specs (BCM, DMS, CPD legacy, …)
+│   ├── tests/                    ← pytest suite (7 test files)
+│   ├── _generated/               ← legacy single-file pipeline output
+│   ├── _generated_v2/            ← SWC-composition pipeline output
 │   └── pyproject.toml
-├── vehicle_functions/            ← live CPD / OCS examples
+├── vehicle_functions/            ← live vehicle examples
+│   ├── child_detection/
+│   │   ├── inc_schema/           ← CANONICAL: ECU + SWC YAMLs (seatECU, centralHPC, …)
+│   │   └── generated/seatecu/
+│   └── occupant_classification/
+│       ├── inc_schema/           ← CANONICAL: SeatECU + 3 SWC_*.yaml
+│       └── generated/seatecu/
 ├── test_env/                     ← docker-compose + per-ECU test harnesses
 └── .github/workflows/verify.yml  ← CI: bmgen verify on every push
 ```
@@ -818,7 +903,7 @@ pytest tests/test_verify_generated.py -v     # Verification pipeline tests
 Contributions are welcome. The most useful things right now:
 
 1. **Add a recipe** — open a PR with a new file under `remotive-bm-compiler/bmgen/recipes/` and register it in `registry.py`. See [VERIFIER_DESIGN.md](docs/architecture/VERIFIER_DESIGN.md) for what T1/T2/T3 must check.
-2. **Add an example** — drop a new YAML spec under `remotive-bm-compiler/examples/` that exercises a real ECU behavior.
+2. **Add an example** — drop a new YAML spec under `remotive-bm-compiler/examples/` (legacy single-file) **or** add an SWC YAML to `vehicle_functions/<ecu>/inc_schema/` and reference it from the ECU spec (canonical SWC composition).
 3. **Improve the verifier** — T1/T2/T3 are the safety net. Tighten them.
 
 The invariant holds across all of this: **no LLM output enters the compile path**. If your PR needs an LLM call, it's the wrong layer.
