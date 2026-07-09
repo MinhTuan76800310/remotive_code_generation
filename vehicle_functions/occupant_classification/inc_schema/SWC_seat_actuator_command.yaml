@@ -1,0 +1,12 @@
+handlers:
+  - name: on_seat_cmd
+    pattern:
+      - name: ActuatorCommand
+        value_type: int
+        initial_state: -1
+    input:
+      namespace: SE-BodyCAN
+      signal: PW_SeatCmd.SeatPosTarget
+    output:
+      - namespace: SE-BodyCAN
+        signals: [PW_SeatStatus.SeatDone]

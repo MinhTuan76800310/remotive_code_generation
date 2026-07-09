@@ -11,6 +11,7 @@ To add a new recipe:
 
 from __future__ import annotations
 
+from bmgen.recipes.actuator_command import ActuatorCommandRecipe
 from bmgen.recipes.base import Recipe
 from bmgen.recipes.direct_signal_mapping import DirectSignalMappingRecipe
 from bmgen.recipes.toggle_button_state import ToggleButtonStateRecipe
@@ -18,6 +19,7 @@ from bmgen.recipes.periodic_blinking_output import PeriodicBlinkingOutputRecipe
 from bmgen.recipes.logic_gate import LogicGateRecipe
 from bmgen.recipes.threshold_mapping import ThresholdMappingRecipe
 from bmgen.recipes.websocket_bridge import WebsocketBridgeRecipe
+from bmgen.recipes.weighted_log_odds import WeightedLogOddsRecipe
 
 
 class RecipeRegistry:
@@ -60,4 +62,8 @@ def create_default_registry() -> RecipeRegistry:
     registry.register(LogicGateRecipe("not"))
     # Model-level recipe: external websocket stream → CAN restbus (not a handler).
     registry.register(WebsocketBridgeRecipe())
+    # CAD pattern: weighted sum of bool(input_i) across multi-namespace fan-in.
+    registry.register(WeightedLogOddsRecipe())
+    # Edge-triggered actuator command → status(1) publish (simulate done).
+    registry.register(ActuatorCommandRecipe())
     return registry

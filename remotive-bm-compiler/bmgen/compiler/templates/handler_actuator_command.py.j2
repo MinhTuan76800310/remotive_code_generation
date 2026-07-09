@@ -1,0 +1,25 @@
+{% if output_groups|length > 1 %}
+{# Multi-output: on command edge, publish 1 to every group. #}
+async def {{ handler_name }}(self, frame: Frame) -> None:
+    {{ input_signal_var }} = {{ cast_prefix }}frame.signals["{{ input_signal_ref }}"]{{ cast_suffix }}
+    if {{ input_signal_var }} != self.{{ state_private_var }}:
+        self.{{ state_private_var }} = {{ input_signal_var }}
+{% for group in output_groups %}
+        await self.{{ group.namespace_var }}.restbus.update_signals(
+{% for signal in group.signals %}
+            ("{{ signal.name }}", {{ signal.value_expr }}),
+{% endfor %}
+        )
+{% endfor %}
+{% else %}
+{# Single-output: edge on command → publish status=1. #}
+async def {{ handler_name }}(self, frame: Frame) -> None:
+    {{ input_signal_var }} = {{ cast_prefix }}frame.signals["{{ input_signal_ref }}"]{{ cast_suffix }}
+    if {{ input_signal_var }} != self.{{ state_private_var }}:
+        self.{{ state_private_var }} = {{ input_signal_var }}
+        await self.{{ output_namespace_var }}.restbus.update_signals(
+{% for signal_name, value_expr in output_tuples %}
+            ("{{ signal_name }}", {{ value_expr }}),
+{% endfor %}
+        )
+{% endif %}

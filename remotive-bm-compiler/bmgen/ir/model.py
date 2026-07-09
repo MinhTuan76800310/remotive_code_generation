@@ -133,6 +133,43 @@ class PeriodicTaskIR:
 
 
 @dataclass
+class WeightedInputIR:
+    """One input of a WeightedLogOdds (CAD-style) recipe — a (namespace, signal, weight) triple.
+
+    Unlike `InputSignalIR` (which is single-frame because handlers fire on one
+    CAN frame), WeightedLogOdds may fan-in signals from MULTIPLE namespaces
+    (e.g. SEAT-CpdCan0 + DMS-CpdCan0 + AIRBAG-CpdCan0 in the child-detection
+    ECU). Each input must therefore carry its own namespace.
+
+    Attributes:
+        namespace: Source CAN namespace name (must exist in ir.namespaces).
+        signal: Signal reference "Frame.Signal" within that namespace.
+        weight: Floating-point coefficient applied to bool(signal) before summing.
+        python_var_name: Derived snake_case local variable name in the generated
+            handler. Defaults from `signal`, then disambiguated by the builder
+            across siblings (see HandlerIR.builder helper).
+        frame_filter: Resolved frame name — either explicit `frame_filter:` from
+            the YAML, or inferred from `signal.split(".", 1)[0]`. The handler
+            creates one FrameFilter per UNIQUE frame across the weighted inputs.
+    """
+    namespace: str
+    signal: str
+    weight: float
+    python_var_name: str = ""
+    frame_filter: str = ""
+
+    def __post_init__(self):
+        if not self.python_var_name:
+            self.python_var_name = _derive_signal_var_name(self.signal)
+        if not self.frame_filter:
+            # Default inference: frame name = substring of signal before first '.'.
+            # This mirrors the project convention — every signal in inc_schema/
+            # is named "<FrameName>.<SignalName>", so the frame is the first dot-
+            # segment. The builder lets users override via explicit `frame_filter:`.
+            self.frame_filter = self.signal.split(".", 1)[0]
+
+
+@dataclass
 class HandlerIR:
     """A handler within the behavioral model.
 
@@ -172,6 +209,19 @@ class HandlerIR:
     threshold: float | None = None  # Optional threshold for ThresholdMapping
     operator: str | None = None  # Optional comparison operator (default ">")
     true_when: str | None = None  # Optional direction: "above" (default) | "below"
+    # WeightedLogOdds fields (NEW). When pattern == "WeightedLogOdds" the recipe
+    # consumes these instead of input_signals. weighted_inputs lets a single
+    # handler fan-in from multiple CAN namespaces (e.g. CAD_logic reads seat,
+    # camera, and airbag status from three different buses) — unlike input_signals
+    # which assumes a single triggering frame.
+    weighted_inputs: list[WeightedInputIR] = field(default_factory=list)
+    weighted_threshold: float | None = None  # Decision threshold for the sum.
+    # Flat pattern params extracted from a list-form `pattern:` block (e.g. the
+    # ThresholdMapping spec in inc_schema/SWC_seat_sensors_preprocessing.yaml
+    # embeds threshold/operator/true_when inside the pattern entry instead of
+    # flat on the handler). Populated by the builder; remains empty for the
+    # legacy string-form `pattern:`.
+    pattern_params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -236,17 +286,84 @@ class BehavioralModelIR:
     # existing model that omits the websocket_listeners: key is unaffected.
     websocket_listeners: list[WebsocketListenerIR] = field(default_factory=list)
 
+    def __post_init__(self):
+        """Resolve python_var_name collisions across the model's namespaces.
+
+        Two namespaces in the same model can have IDENTICAL suffixes
+        (e.g. "CENTRAL-CpdCan0" and "DMS-CpdCan0" both → "cpd_can_0") — this
+        makes the generated class definition ambiguous and crashes the
+        generated Python at `__init__` (positional vs keyword collision).
+        We detect collisions on the default-derived name and disambiguate the
+        LATER entries by prepending a snake_case form of the ECU prefix.
+
+        Examples (CENTRAL/DMS/AIRBAG share `CpdCan0`):
+            CENTRAL-CpdCan0 → cpd_can_0            (kept; first wins)
+            DMS-CpdCan0     → dms_cpd_can_0        (disambiguated)
+            AIRBAG-CpdCan0  → airbag_cpd_can_0     (disambiguated)
+
+        Single-namespace ECUs and the historical "BodyCan0 vs DriverCan0" case
+        are unaffected (suffixes are already unique so the early-return wins).
+        """
+        counts: dict[str, int] = {}
+        for ns in self.namespaces:
+            base = ns.python_var_name
+            counts[base] = counts.get(base, 0) + 1
+        if not any(c > 1 for c in counts.values()):
+            return  # no collisions; keep default names → byte-identical output
+
+        seen: set[str] = set()
+        for ns in self.namespaces:
+            base = ns.python_var_name
+            if base in seen:
+                # Collision: derive a unique name from the ECU prefix.
+                prefix_snake = _ecu_prefix_to_snake(ns.name)
+                candidate = f"{prefix_snake}_{base}"
+                # Defensive: keep appending `_v2`/etc. if still colliding
+                # (shouldn't happen since prefixes are unique, but guard).
+                n = 2
+                while candidate in seen:
+                    candidate = f"{candidate}_v{n}"
+                    n += 1
+                ns.python_var_name = candidate
+            seen.add(ns.python_var_name)
+
+
+def _ecu_prefix_to_snake(namespace_name: str) -> str:
+    """Convert the ECU prefix (the part before `-`) to snake_case.
+
+    E.g., "AIRBAG-CpdCan0" → "airbag"
+          "DMS-CpdCan0"     → "dms"
+          "BCM-BodyCan0"    → "bcm"
+    """
+    prefix = namespace_name.split("-", 1)[0]
+    out: list[str] = []
+    for i, ch in enumerate(prefix):
+        if ch.isupper() and i > 0 and not prefix[i - 1].isupper():
+            out.append("_")
+        if ch.isupper():
+            out.append(ch.lower())
+        else:
+            out.append(ch)
+    # Collapse "BCR_Driver" → "bcr_driver" (already a snake from underscore
+    # inserts above; no further work needed).
+    return "".join(out)
+
 
 def _derive_python_var_name(namespace_name: str) -> str:
     """Convert a Remotive namespace name to a Python snake_case variable name.
 
     E.g., "BCM-BodyCan0" → "body_can_0"
          "BCM-DriverCan0" → "driver_can_0"
+         "SEAT-OCS-CpdCan0" → "ocs_cpd_can_0"  (multi-segment suffix after ECU prefix)
 
     The convention follows the reference examples where "BCM-BodyCan0" is
-    accessed as `self.body_can_0` in Python code.
+    accessed as `self.body_can_0` in Python code. Any remaining hyphens in the
+    suffix (e.g. "OCS-CpdCan0") become underscores so the result is a valid
+    Python identifier.
     """
-    # Remove the ECU prefix (e.g., "BCM-") and convert to snake_case
+    # Remove the ECU prefix (e.g., "BCM-" / "SEAT-") and convert to snake_case.
+    # Only the FIRST hyphen separates ECU prefix from suffix; further hyphens
+    # inside the suffix are converted to underscores below.
     parts = namespace_name.split("-", 1)
     if len(parts) == 2:
         suffix = parts[1]
@@ -271,7 +388,11 @@ def _derive_python_var_name(namespace_name: str) -> str:
             # Insert underscore before digit that follows a letter
             elif char.isdigit() and prev_char.isalpha():
                 result.append("_")
-        result.append(char.lower())
+        # Hyphens inside the suffix (e.g. "OCS-CpdCan0") → underscore
+        if char == "-":
+            result.append("_")
+        else:
+            result.append(char.lower())
         i += 1
 
     return "".join(result)

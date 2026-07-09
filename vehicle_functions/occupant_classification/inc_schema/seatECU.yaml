@@ -1,0 +1,14 @@
+ecu:
+  name: SeatECU
+  broker_name: SEAT
+
+namespace_types:
+  SEAT-CpdCan0: can
+  SEAT-OCS-CpdCan0: can
+  SE-BodyCAN: can
+
+software_components:
+  - ./SWC_seat_sensors_preprocessing.yaml
+  - ./SWC_seat_buckle_forward.yaml
+  - ./SWC_classify_occupant.yaml
+  - ./SWC_seat_actuator_command.yaml
