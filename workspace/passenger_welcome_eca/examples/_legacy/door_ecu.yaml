@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ECU
+ecu_mock:
+  name: DoorECU
+
+  interfaces:
+    can_rx:
+      - signal: DoorCommand.DoorOpenRequest
+      - signal: DoorCommand.DoorCloseRequest
+    can_tx:
+      - signal: DoorStatus.DoorOpenDone
+      - signal: DoorStatus.DoorCloseDone
+    someip_tx: []
+
+  parameters:
+    - name: open_sequence_sec
+      type: float
+      value: 1.5
+    - name: close_sequence_sec
+      type: float
+      value: 1.5
+
+  state:
+    - name: door_opening
+      type: bool
+      init: false
+    - name: door_closing
+      type: bool
+      init: false
+    - name: door_is_open
+      type: bool
+      init: false
+
+  timers:
+    - name: open_sequence
+      interval: 1.5
+      auto_start: true
+    - name: close_sequence
+      interval: 1.5
+      auto_start: true
+
+  rules:
+    # closed --> start open (~1.5s later Done)
+    - rule_id: start_open_on_request
+      trigger:
+        type: on_rx
+        target: DoorCommand.DoorOpenRequest
+      condition: "$DoorOpenRequest == 1 AND $door_opening == false AND $door_closing == false AND $door_is_open == false"
+      actions:
+        - type: set_state
+          target: door_opening
+          payload: "true"
+
+    - rule_id: complete_open_on_timer
+      trigger:
+        type: on_timer
+        target: open_sequence
+      condition: "$door_opening == true"
+      actions:
+        - type: set_state
+          target: door_opening
+          payload: "false"
+        - type: set_state
+          target: door_is_open
+          payload: "true"
+        - type: tx
+          target: DoorStatus.DoorOpenDone
+          payload: "1"
+
+    # Already open + open request --> ack Done immediately (no 1.5s)
+    - rule_id: already_open_ack
+      trigger:
+        type: on_rx
+        target: DoorCommand.DoorOpenRequest
+      condition: "$DoorOpenRequest == 1 AND $door_is_open == true AND $door_closing == false"
+      actions:
+        - type: tx
+          target: DoorStatus.DoorOpenDone
+          payload: "1"
+
+    # --- CLOSE path ---
+    # Open (and not busy) --> start close (~1.5s later CloseDone)
+    - rule_id: start_close_on_request
+      trigger:
+        type: on_rx
+        target: DoorCommand.DoorCloseRequest
+      condition: "$DoorCloseRequest == 1 AND $door_is_open == true AND $door_closing == false AND $door_opening == false"
+      actions:
+        - type: set_state
+          target: door_closing
+          payload: "true"
+
+    - rule_id: complete_close_on_timer
+      trigger:
+        type: on_timer
+        target: close_sequence
+      condition: "$door_closing == true"
+      actions:
+        - type: set_state
+          target: door_closing
+          payload: "false"
+        - type: set_state
+          target: door_is_open
+          payload: "false"
+        - type: tx
+          target: DoorStatus.DoorCloseDone
+          payload: "1"
+
+    # Already closed + close request --> ack CloseDone immediately
+    - rule_id: already_closed_ack
+      trigger:
+        type: on_rx
+        target: DoorCommand.DoorCloseRequest
+      condition: "$DoorCloseRequest == 1 AND $door_is_open == false AND $door_opening == false AND $door_closing == false"
+      actions:
+        - type: tx
+          target: DoorStatus.DoorCloseDone
+          payload: "1"

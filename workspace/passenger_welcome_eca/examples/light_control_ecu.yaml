@@ -1,0 +1,78 @@
+# LightControlECU — Passenger Welcome
+# Receive ambient-light request → apply welcome scene → report done.
+apiVersion: v1
+kind: ECU
+ecu_mock:
+  name: LightControlECU
+
+  interfaces:
+    can_rx:
+      - signal: LightCommand.AmbientLightRequest
+    can_tx:
+      - signal: LightStatus.AmbientLightDone
+      - signal: LightStatus.AmbientBrightness
+      - signal: LightStatus.AmbientScene
+    someip_tx: []
+
+  parameters:
+    - name: welcome_brightness_pct
+      type: int
+      value: 40
+    - name: fade_in_sec
+      type: float
+      value: 0.5
+
+  state:
+    - name: lighting
+      type: bool
+      init: false
+    - name: active_scene
+      type: int
+      init: 0
+    - name: brightness_pct
+      type: int
+      init: 0
+
+  # auto_start true: no start_timer in schema — free-running tick + $lighting guard
+  timers:
+    - name: fade_in
+      interval: 0.5
+      auto_start: true
+
+  rules:
+    # Welcome (or any non-zero) scene request while idle → start fade-in
+    - rule_id: start_ambient_on_request
+      trigger:
+        type: on_rx
+        target: LightCommand.AmbientLightRequest
+      condition: "$AmbientLightRequest != 0 AND $lighting == false"
+      actions:
+        - type: set_state
+          target: lighting
+          payload: "true"
+        - type: set_state
+          target: active_scene
+          payload: "$AmbientLightRequest"
+
+    # Fade complete → apply welcome brightness + scene, report done
+    - rule_id: complete_ambient_on_timer
+      trigger:
+        type: on_timer
+        target: fade_in
+      condition: "$lighting == true"
+      actions:
+        - type: set_state
+          target: brightness_pct
+          payload: "$welcome_brightness_pct"
+        - type: set_state
+          target: lighting
+          payload: "false"
+        - type: tx
+          target: LightStatus.AmbientScene
+          payload: "$active_scene"
+        - type: tx
+          target: LightStatus.AmbientBrightness
+          payload: "$welcome_brightness_pct"
+        - type: tx
+          target: LightStatus.AmbientLightDone
+          payload: "1"

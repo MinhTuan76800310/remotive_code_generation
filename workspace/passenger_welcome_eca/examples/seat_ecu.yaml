@@ -1,0 +1,75 @@
+# SeatECU — Passenger Welcome
+# Receive seat-adjust request → apply driver-context position → report done.
+apiVersion: v1
+kind: ECU
+ecu_mock:
+  name: SeatECU
+
+  interfaces:
+    can_rx:
+      - signal: SeatCommand.SeatAdjustRequest
+    can_tx:
+      - signal: SeatStatus.SeatAdjustDone
+      - signal: SeatStatus.SeatPosition
+    someip_tx: []
+
+  parameters:
+    # Driver context: target track position for welcome profile (mm from rear stop)
+    - name: driver_seat_position_mm
+      type: int
+      value: 420
+    - name: adjust_duration_sec
+      type: float
+      value: 2.0
+
+  state:
+    - name: adjusting
+      type: bool
+      init: false
+    - name: current_position_mm
+      type: int
+      init: 0
+    - name: target_profile
+      type: int
+      init: 0
+
+  # auto_start true: no start_timer in schema — free-running tick + $adjusting guard
+  timers:
+    - name: adjust_motion
+      interval: 2.0
+      auto_start: true
+
+  rules:
+    # New adjust request while idle → latch target, start motion
+    - rule_id: start_adjust_on_request
+      trigger:
+        type: on_rx
+        target: SeatCommand.SeatAdjustRequest
+      condition: "$SeatAdjustRequest != 0 AND $adjusting == false"
+      actions:
+        - type: set_state
+          target: adjusting
+          payload: "true"
+        - type: set_state
+          target: target_profile
+          payload: "$SeatAdjustRequest"
+
+    # Motion timer complete → snap to driver context position, publish done
+    - rule_id: complete_adjust_on_timer
+      trigger:
+        type: on_timer
+        target: adjust_motion
+      condition: "$adjusting == true"
+      actions:
+        - type: set_state
+          target: current_position_mm
+          payload: "$driver_seat_position_mm"
+        - type: set_state
+          target: adjusting
+          payload: "false"
+        - type: tx
+          target: SeatStatus.SeatPosition
+          payload: "$driver_seat_position_mm"
+        - type: tx
+          target: SeatStatus.SeatAdjustDone
+          payload: "1"

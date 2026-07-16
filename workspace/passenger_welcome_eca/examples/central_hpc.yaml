@@ -1,0 +1,112 @@
+# CentralHPC — Passenger Welcome coordinator
+# On door open → fan-out seat adjust + ambient light → wait both done → end welcome.
+apiVersion: v1
+kind: ECU
+ecu_mock:
+  name: CentralHPC
+
+  interfaces:
+    can_rx:
+      - signal: DoorStatus.DoorOpenDone
+      - signal: SeatStatus.SeatAdjustDone
+      - signal: LightStatus.AmbientLightDone
+    can_tx:
+      - signal: SeatCommand.SeatAdjustRequest
+      - signal: LightCommand.AmbientLightRequest
+      - signal: WelcomeStatus.WelcomeComplete
+    someip_tx: []
+
+  parameters:
+    - name: welcome_seat_profile
+      type: int
+      value: 1
+    - name: welcome_light_scene
+      type: int
+      value: 2
+
+  state:
+    - name: welcome_active
+      type: bool
+      init: false
+    - name: seat_done
+      type: bool
+      init: false
+    - name: light_done
+      type: bool
+      init: false
+
+  timers: []
+
+  rules:
+    # Door finished opening → start welcome: request seat + light in parallel
+    - rule_id: start_welcome_on_door_open
+      trigger:
+        type: on_rx
+        target: DoorStatus.DoorOpenDone
+      condition: "$DoorOpenDone == 1 AND $welcome_active == false"
+      actions:
+        - type: set_state
+          target: welcome_active
+          payload: "true"
+        - type: set_state
+          target: seat_done
+          payload: "false"
+        - type: set_state
+          target: light_done
+          payload: "false"
+        - type: tx
+          target: SeatCommand.SeatAdjustRequest
+          payload: "$welcome_seat_profile"
+        - type: tx
+          target: LightCommand.AmbientLightRequest
+          payload: "$welcome_light_scene"
+
+    # Seat branch complete
+    - rule_id: mark_seat_done
+      trigger:
+        type: on_rx
+        target: SeatStatus.SeatAdjustDone
+      condition: "$SeatAdjustDone == 1 AND $welcome_active == true"
+      actions:
+        - type: set_state
+          target: seat_done
+          payload: "true"
+
+    # Light branch complete
+    - rule_id: mark_light_done
+      trigger:
+        type: on_rx
+        target: LightStatus.AmbientLightDone
+      condition: "$AmbientLightDone == 1 AND $welcome_active == true"
+      actions:
+        - type: set_state
+          target: light_done
+          payload: "true"
+
+    # Both branches done → end welcome sequence
+    # Fired when seat_done is set; re-checks light_done (and vice versa below).
+    - rule_id: finish_welcome_after_seat
+      trigger:
+        type: on_rx
+        target: SeatStatus.SeatAdjustDone
+      condition: "$welcome_active == true AND $seat_done == true AND $light_done == true"
+      actions:
+        - type: set_state
+          target: welcome_active
+          payload: "false"
+        - type: tx
+          target: WelcomeStatus.WelcomeComplete
+          payload: "1"
+
+    - rule_id: finish_welcome_after_light
+      trigger:
+        type: on_rx
+        target: LightStatus.AmbientLightDone
+      condition: "$welcome_active == true AND $seat_done == true AND $light_done == true"
+      actions:
+        - type: set_state
+          target: welcome_active
+          payload: "false"
+        - type: tx
+          target: WelcomeStatus.WelcomeComplete
+          payload: "1"
