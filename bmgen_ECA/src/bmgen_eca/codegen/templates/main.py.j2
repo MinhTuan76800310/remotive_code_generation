@@ -1,0 +1,112 @@
+import asyncio
+import logging
+
+import numpy as np
+from remotivelabs.broker import BrokerClient, Frame
+from remotivelabs.topology.behavioral_model import BehavioralModel
+from remotivelabs.topology.cli.behavioral_model import BehavioralModelArgs
+from remotivelabs.topology.namespaces import filters
+from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
+
+
+class {{ ecu_name }}:
+    {{ ns_var }}: CanNamespace
+{% for p in params %}
+    {{ p.name }}: {{ p.type }} = {{ p.value }}
+{% endfor %}
+{% for s in states %}
+    {{ s.name }}: {{ s.type }} = {{ s.init }}
+{% endfor %}
+{% for t in tickers %}
+    {{ t.task_var }}: asyncio.Task | None = None
+{% endfor %}
+
+    def __init__(self, {{ ns_var }}: CanNamespace) -> None:
+        self.{{ ns_var }} = {{ ns_var }}
+
+{% for h in handlers %}
+    async def {{ h.method }}(self, frame: Frame) -> None:
+{% for r in h.signal_reads %}
+        {{ r.local }} = frame.signals["{{ r.key }}"]
+{% endfor %}
+{% for rule in h.rules %}
+        # rule {{ rule.rule_id }}
+{% if rule.always %}
+{% for line in rule.actions_py %}
+        {{ line }}
+{% endfor %}
+{% else %}
+        if {{ rule.condition_py }}:
+{% for line in rule.actions_py %}
+            {{ line }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+{% for t in tickers %}
+    async def {{ t.method }}(self) -> None:
+        while True:
+            await asyncio.sleep({{ t.interval }})
+{% for rule in t.rules %}
+            # rule {{ rule.rule_id }}
+{% if rule.always %}
+{% for line in rule.actions_py %}
+            {{ line }}
+{% endfor %}
+{% else %}
+            if {{ rule.condition_py }}:
+{% for line in rule.actions_py %}
+                {{ line }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+{% if tickers %}
+    def _start_tickers(self) -> None:
+{% for t in tickers %}
+        self.{{ t.task_var }} = asyncio.create_task(self.{{ t.method }}())
+{% endfor %}
+{% endif %}
+
+
+async def main(avp: BehavioralModelArgs):
+    logging.info("Starting {{ ecu_name }} simulator")
+
+    async with BrokerClient(url=avp.url, auth=avp.auth) as broker_client:
+        {{ ns_var }} = CanNamespace(
+            "{{ namespace }}",
+            broker_client,
+            restbus_configs=[
+                RestbusConfig(
+                    [filters.SenderFilter(ecu_name="{{ ecu_name }}")],
+                    delay_multiplier=avp.delay_multiplier,
+                )
+            ],
+        )
+        {{ model_var }} = {{ ecu_name }}({{ ns_var }}={{ ns_var }})
+
+        async with BehavioralModel(
+            "{{ ecu_name }}",
+            namespaces=[{{ ns_var }}],
+            broker_client=broker_client,
+            input_handlers=[
+{% for h in handlers %}
+                {{ ns_var }}.create_input_handler(
+                    [filters.FrameFilter("{{ h.frame }}")],
+                    {{ model_var }}.{{ h.method }},
+                ),
+{% endfor %}
+            ],
+        ) as bm:
+{% if tickers %}
+            {{ model_var }}._start_tickers()
+{% endif %}
+            await bm.run_forever()
+
+
+if __name__ == "__main__":
+    args = BehavioralModelArgs.parse()
+    logging.basicConfig(level=args.loglevel)
+    asyncio.run(main(args))
