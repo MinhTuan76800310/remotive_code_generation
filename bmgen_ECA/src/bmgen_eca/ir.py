@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bmgen_eca.signals import SignalId
+
+if TYPE_CHECKING:
+    from bmgen_eca.symbols import SymbolTable
 
 
 class SymbolKind(str, Enum):
@@ -56,3 +59,17 @@ class RuleIR:
 class ResolvedModel:
     rules: list[RuleIR]
     ecu_name: str = ""
+
+
+@dataclass(frozen=True)
+class ValidatedEcaIR:
+    ecu_name: str  # DoorECU
+    package_dir: str  # door_ecu
+    namespace: str  # table.bus BodyCAN
+    symbols: "SymbolTable"
+    params: list[Symbol]
+    states: list[Symbol]
+    timers: list[Symbol]
+    rules: list[RuleIR]
+    rx_frames: dict[tuple[str, str], list[RuleIR]]  # (bus, frame) → on_rx rules
+    timer_rules: dict[str, list[RuleIR]]  # timer name → on_timer rules
