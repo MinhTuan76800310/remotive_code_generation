@@ -101,4 +101,4 @@ def test_green_schema_v2(schema_v2_path):
     assert ir is not None
     assert ir.ecu_name == "DoorECU"
     assert ir.package_dir == "door_ecu"
-    assert ir.namespace == "BodyCAN"
+    assert ir.namespace == "DoorECU-BodyCan0"

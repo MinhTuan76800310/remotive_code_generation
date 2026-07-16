@@ -17,7 +17,9 @@ _SNAKE_2 = re.compile(r"([a-z0-9])([A-Z])")
 
 
 def snake_case(name: str) -> str:
-    """DoorECU → door_ecu."""
+    """DoorECU → door_ecu; DoorECU-BodyCan0 → door_ecu__body_can0 (valid ident)."""
+    # Remotive bus/namespace may contain hyphens; normalize before camel split.
+    name = name.replace("-", "_")
     s1 = _SNAKE_1.sub(r"\1_\2", name)
     return _SNAKE_2.sub(r"\1_\2", s1).lower()
 

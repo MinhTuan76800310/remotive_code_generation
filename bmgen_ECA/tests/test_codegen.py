@@ -20,15 +20,21 @@ def test_codegen_syntax_and_shape(schema_v2_path, tmp_path):
     src = (pkg / "__main__.py").read_text()
     ast.parse(src)
     assert "class DoorECU" in src
-    assert 'CanNamespace(\n            "BodyCAN"' in src or 'CanNamespace("BodyCAN"' in src
-    assert 'FrameFilter("DoorStatus")' in src
+    assert "DoorECU-BodyCan0" in src
+    assert 'FrameFilter("DoorCmd")' in src
     assert "import numpy as np" in src
     assert "np.minimum.reduce" in src or "np.maximum.reduce" in src
     assert "asyncio.sleep(0.2)" in src
     assert 'SenderFilter(ecu_name="DoorECU")' in src
     assert "target_position = frame.signals" in src
-    assert '["[BodyCAN]DoorStatus.TargetPosition"]' in src
-    assert "self.target_pos =" in src
+    # Remotive live keys are Frame.Signal (no [Bus] prefix)
+    assert '["DoorCmd.TargetPosition"]' in src
+    assert '["[DoorECU-BodyCan0]DoorCmd.TargetPosition"]' not in src
+    assert '("DoorStatus.CurrentPosition"' in src
+    assert '("DoorStatus.IsMoving"' in src
+    assert "self.target_pos = float(" in src
+    assert "self.current_pos = float(" in src
+    assert "self.door_moving = bool(" in src
     assert "update_signals" in src
     assert "BrokerClient" in src
     assert "run_forever" in src

@@ -6,7 +6,7 @@ def test_parse_schema_v2(schema_v2_path):
     assert not any(d.code.startswith("E_") for d in diags if d.severity.value == "error")
     assert raw is not None
     assert raw.ecu_name == "DoorECU"
-    assert raw.can_rx == ["[BodyCAN]DoorStatus.TargetPosition"]
+    assert raw.can_rx == ["[DoorECU-BodyCan0]DoorCmd.TargetPosition"]
     assert len(raw.can_tx) == 2
     assert len(raw.parameters) == 4
     assert len(raw.state) == 3

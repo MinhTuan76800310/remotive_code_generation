@@ -31,6 +31,13 @@ def _signal_local(raw: str, signal_leaf: str) -> str:
     return snake_case(signal_leaf)
 
 
+def _remotive_signal_key(raw: str) -> str:
+    """`[Bus]Frame.Signal` → `Frame.Signal` for Remotive frame.signals / restbus keys."""
+    if "]" in raw:
+        return raw.split("]", 1)[1]
+    return raw
+
+
 def _collect_signal_reads(rules: list[RuleIR]) -> list[dict[str, str]]:
     """RX signal leaves used by rules → local bindings from frame.signals."""
     seen: dict[str, dict[str, str]] = {}
@@ -40,19 +47,41 @@ def _collect_signal_reads(rules: list[RuleIR]) -> list[dict[str, str]]:
             for kind, name in free_refs(expr):
                 if kind != "rx" or name in seen:
                     continue
-                # name is SignalId.raw
-                # leaf = part after last '.'
+                # name is SignalId.raw; Remotive key drops [Bus]
                 leaf = name.rsplit(".", 1)[-1]
                 local = _signal_local(name, leaf)
-                seen[name] = {"local": local, "key": name}
+                seen[name] = {
+                    "local": local,
+                    "key": _remotive_signal_key(name),
+                    "raw": name,
+                }
     return list(seen.values())
 
 
 def _signal_locals_map(reads: list[dict[str, str]]) -> dict[str, str]:
-    return {r["key"]: r["local"] for r in reads}
+    # lower_expr looks up SignalRef by SignalId.raw
+    return {r["raw"]: r["local"] for r in reads}
 
 
-def _lower_actions(actions: list[ActionIR], *, ns_var: str, signal_locals: dict[str, str]) -> list[str]:
+def _cast_state_rhs(name: str, rhs: str, state_types: dict[str, str]) -> str:
+    """Cast numpy scalars from min/max/abs to native Python for Remotive restbus."""
+    typ = state_types.get(name)
+    if typ == "float":
+        return f"float({rhs})"
+    if typ == "bool":
+        return f"bool({rhs})"
+    if typ == "int":
+        return f"int({rhs})"
+    return rhs
+
+
+def _lower_actions(
+    actions: list[ActionIR],
+    *,
+    ns_var: str,
+    signal_locals: dict[str, str],
+    state_types: dict[str, str],
+) -> list[str]:
     """Lower actions; batch consecutive tx into one update_signals call."""
     lines: list[str] = []
     i = 0
@@ -60,7 +89,9 @@ def _lower_actions(actions: list[ActionIR], *, ns_var: str, signal_locals: dict[
         act = actions[i]
         if act.kind == "set_state":
             rhs = lower_expr(act.payload, signal_locals=signal_locals)
-            lines.append(f"self.{act.target_name} = {rhs}")
+            lines.append(
+                f"self.{act.target_name} = {_cast_state_rhs(act.target_name, rhs, state_types)}"
+            )
             i += 1
             continue
         if act.kind == "tx":
@@ -68,7 +99,9 @@ def _lower_actions(actions: list[ActionIR], *, ns_var: str, signal_locals: dict[
             while i < len(actions) and actions[i].kind == "tx":
                 a = actions[i]
                 val = lower_expr(a.payload, signal_locals=signal_locals)
-                pairs.append(f'("{a.target_name}", {val})')
+                key = _remotive_signal_key(a.target_name)
+                # Values come from state fields cast to native types on set_state.
+                pairs.append(f'("{key}", {val})')
                 i += 1
             args = ",\n                ".join(pairs)
             if len(pairs) == 1:
@@ -86,7 +119,13 @@ def _lower_actions(actions: list[ActionIR], *, ns_var: str, signal_locals: dict[
     return lines
 
 
-def _lower_rule(rule: RuleIR, *, ns_var: str, signal_locals: dict[str, str]) -> dict[str, Any]:
+def _lower_rule(
+    rule: RuleIR,
+    *,
+    ns_var: str,
+    signal_locals: dict[str, str],
+    state_types: dict[str, str],
+) -> dict[str, Any]:
     cond = lower_expr(rule.condition, signal_locals=signal_locals)
     # Drop trivial True wrapping parens from lowerer for lit true → "True"
     always = cond == "True"
@@ -94,7 +133,12 @@ def _lower_rule(rule: RuleIR, *, ns_var: str, signal_locals: dict[str, str]) -> 
         "rule_id": rule.rule_id,
         "condition_py": cond,
         "always": always,
-        "actions_py": _lower_actions(rule.actions, ns_var=ns_var, signal_locals=signal_locals),
+        "actions_py": _lower_actions(
+            rule.actions,
+            ns_var=ns_var,
+            signal_locals=signal_locals,
+            state_types=state_types,
+        ),
     }
 
 
@@ -118,6 +162,7 @@ def build_context(ir: ValidatedEcaIR) -> dict[str, Any]:
         }
         for s in ir.states
     ]
+    state_types = {s["name"]: s["type"] for s in states}
 
     handlers: list[dict[str, Any]] = []
     # stable order: sorted by (bus, frame)
@@ -131,7 +176,13 @@ def build_context(ir: ValidatedEcaIR) -> dict[str, Any]:
                 "bus": bus,
                 "signal_reads": reads,
                 "rules": [
-                    _lower_rule(r, ns_var=ns_var, signal_locals=locs) for r in rules
+                    _lower_rule(
+                        r,
+                        ns_var=ns_var,
+                        signal_locals=locs,
+                        state_types=state_types,
+                    )
+                    for r in rules
                 ],
             }
         )
@@ -148,7 +199,13 @@ def build_context(ir: ValidatedEcaIR) -> dict[str, Any]:
                 "method": f"_loop_{t.name}",
                 "task_var": f"_ticker_{t.name}",
                 "rules": [
-                    _lower_rule(r, ns_var=ns_var, signal_locals={}) for r in rules
+                    _lower_rule(
+                        r,
+                        ns_var=ns_var,
+                        signal_locals={},
+                        state_types=state_types,
+                    )
+                    for r in rules
                 ],
             }
         )

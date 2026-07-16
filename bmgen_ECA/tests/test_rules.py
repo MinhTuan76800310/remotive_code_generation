@@ -85,7 +85,7 @@ def test_bad_action_type(schema_v2_path):
             "rule_id": "bad_act",
             "trigger": {
                 "type": "on_rx",
-                "target": "[BodyCAN]DoorStatus.TargetPosition",
+                "target": "[DoorECU-BodyCan0]DoorCmd.TargetPosition",
             },
             "condition": "true",
             "actions": [{"type": "log", "target": "x", "payload": "1"}],

@@ -8,8 +8,8 @@ def test_compile_yaml_green(schema_v2_path):
     assert ir is not None
     assert ir.ecu_name == "DoorECU"
     assert ir.package_dir == "door_ecu"
-    assert ir.namespace == "BodyCAN"
-    assert ("BodyCAN", "DoorStatus") in ir.rx_frames
+    assert ir.namespace == "DoorECU-BodyCan0"
+    assert ("DoorECU-BodyCan0", "DoorCmd") in ir.rx_frames
     assert "tick" in ir.timer_rules
     assert [r.rule_id for r in ir.timer_rules["tick"]] == [
         "move_door",

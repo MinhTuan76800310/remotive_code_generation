@@ -10,9 +10,9 @@ def test_v2_symbols(schema_v2_path):
     table, diags = build_symbols(raw)
     assert not has_errors(diags)
     assert table is not None
-    assert table.lookup_rx("[BodyCAN]DoorStatus.TargetPosition") is not None
-    assert table.lookup_tx("[BodyCAN]DoorStatus.IsMoving") is not None
-    assert table.lookup_tx("[BodyCAN]DoorStatus.CurrentPosition") is not None
+    assert table.lookup_rx("[DoorECU-BodyCan0]DoorCmd.TargetPosition") is not None
+    assert table.lookup_tx("[DoorECU-BodyCan0]DoorStatus.IsMoving") is not None
+    assert table.lookup_tx("[DoorECU-BodyCan0]DoorStatus.CurrentPosition") is not None
     assert table.lookup_param("move_step") is not None
     assert table.lookup_param("min_pos") is not None
     assert table.lookup_param("max_pos") is not None
@@ -21,7 +21,7 @@ def test_v2_symbols(schema_v2_path):
     assert table.lookup_state("current_pos") is not None
     assert table.lookup_state("door_moving") is not None
     assert table.lookup_timer("tick") is not None
-    assert table.bus == "BodyCAN"
+    assert table.bus == "DoorECU-BodyCan0"
 
 
 def test_dup_param(schema_v2_path):

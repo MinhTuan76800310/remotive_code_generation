@@ -543,7 +543,11 @@ No `log.py` (M8).
 | C11 | On entry: read each RX signal leaf used by rules on this frame into locals | [ ] |
 | C12 | Fire `on_rx` rules for that frame in `source_order` | [ ] |
 
-**Signal key in `frame.signals`:** prefer full raw `"[BodyCAN]DoorStatus.TargetPosition"` first; if Remotive topology uses short `"DoorStatus.TargetPosition"` or leaf only, document adapter once. MVP emit **raw SignalId string** as key; live-bus mismatch is post-MVP (structural package still valid).
+**Signal key in `frame.signals` / restbus:** live-proven = **`Frame.Signal`** (bus stripped). Codegen helper `_remotive_signal_key("[Bus]Frame.Signal") → "Frame.Signal"`. IR still stores full raw for diagnostics.
+
+**E2E bus convention (2026-07-16):** YAML bus may equal Remotive `{ecu}-{channel}` (e.g. `DoorECU-BodyCan0`) so `CanNamespace(bus)` needs zero interfaces.json patch. Design A20 (namespace = bus) unchanged.
+
+**Numpy → native cast (live):** `np.maximum.reduce` / `np.abs` yield `np.float64` / `np.bool_`; Remotive restbus rejects them (`TypeError: bad argument type`). Codegen wraps `set_state` RHS with `float(...)` / `bool(...)` / `int(...)` from state type.
 
 ### Timer = free-running ticker
 
@@ -669,7 +673,7 @@ if __name__ == "__main__":
 
 ### Risk accepted for MVP
 
-Frame signal **dict key** shape depends on Remotive frame defs. Emit raw `[Bus]Frame.Signal`; topology alignment later. Acceptance = structural package + lowered logic correctness, not live bus E2E.
+Frame signal **dict key** live-proven as `Frame.Signal` (see §5 note above). Live E2E on `getting_started` (DoorECU alongside seat) is green: 6/6 `test_door_ecu_bmgen.py`.
 
 ---
 
@@ -698,7 +702,10 @@ Frame signal **dict key** shape depends on Remotive frame defs. Emit raw `[Bus]F
 
 | Date | Decision ID | What code did | Match? | Action |
 |------|-------------|----------------|--------|--------|
-| | | | | |
+| 2026-07-16 | C5 / signal key | Emit `Frame.Signal` not raw `[Bus]…` | Live override | Documented; IR still full raw |
+| 2026-07-16 | A20 bus | schema bus = `DoorECU-BodyCan0` | Match A20 | Zero-patch topology |
+| 2026-07-16 | numpy cast | `float()`/`bool()` on set_state | New live fix | restbus rejects np scalars |
+| 2026-07-16 | frames | DoorCmd RX + DoorStatus TX split | DBC sender rule | schema_v2 updated |
 
 ---
 
