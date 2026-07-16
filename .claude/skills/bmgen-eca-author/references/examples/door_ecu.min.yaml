@@ -1,0 +1,75 @@
+apiVersion: v1.0
+ecu_mock:
+  name: DoorECU
+behavior:
+  interfaces:
+    can_rx:
+      - signal: "[DoorECU-BodyCan0]DoorCmd.TargetPosition"
+    can_tx:
+      - signal: "[DoorECU-BodyCan0]DoorStatus.CurrentPosition"
+      - signal: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
+    someip_tx: []
+  parameters:
+    - name: min_pos
+      type: float
+      value: 0.0
+    - name: max_pos
+      type: float
+      value: 100.0
+    - name: move_step
+      type: float
+      value: 10.0          # position units per 0.2s tick -> ~2s for a full 0..100 travel
+    - name: pos_tolerance
+      type: float
+      value: 0.01          # "arrived" threshold; avoids exact float equality
+  state:
+    - name: door_moving
+      type: bool
+      init: false
+    - name: current_pos
+      type: float
+      init: 0.0
+    - name: target_pos
+      type: float
+      init: 0.0
+  timers:
+    - name: tick
+      interval: 0.2
+      auto_start: true
+  rules:
+    # Receive commanded target, clamp into [min_pos, max_pos] -- the range guard
+    - rule_id: receive_target
+      trigger:
+        type: on_rx
+        target: "[DoorECU-BodyCan0]DoorCmd.TargetPosition"
+      condition: "true"
+      actions:
+        - type: set_state
+          target: target_pos
+          payload: "max($para.min_pos, min($para.max_pos, $[DoorECU-BodyCan0]DoorCmd.TargetPosition))"
+    # Step current_pos toward target_pos; clamp prevents overshoot
+    - rule_id: move_door
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "abs($state.target_pos - $state.current_pos) > $para.pos_tolerance"
+      actions:
+        - type: set_state
+          target: current_pos
+          payload: "$state.current_pos + max(0 - $para.move_step, min($para.move_step, $state.target_pos - $state.current_pos))"
+    # Publish state outward every tick (after move, so IsMoving is current)
+    - rule_id: publish_status
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "true"
+      actions:
+        - type: set_state
+          target: door_moving
+          payload: "abs($state.target_pos - $state.current_pos) > $para.pos_tolerance"
+        - type: tx
+          target: "[DoorECU-BodyCan0]DoorStatus.CurrentPosition"
+          payload: "$state.current_pos"
+        - type: tx
+          target: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
+          payload: "$state.door_moving"
