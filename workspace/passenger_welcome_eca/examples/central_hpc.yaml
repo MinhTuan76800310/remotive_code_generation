@@ -86,6 +86,10 @@ behavior:
         - type: set_state
           target: light_done
           payload: "false"
+        # Clear sticky complete so a live re-test can wait for the next join edge.
+        - type: tx
+          target: "[CentralHPC-BodyCan0]WelcomeStatus.WelcomeComplete"
+          payload: "0"
         - type: tx
           target: "[CentralHPC-BodyCan0]PW_SeatCmd.SeatPosTarget"
           payload: "$para.welcome_seat_pos"
