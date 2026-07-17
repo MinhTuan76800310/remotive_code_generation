@@ -7,7 +7,7 @@ def test_parse_schema_v2(schema_v2_path):
     assert raw is not None
     assert raw.ecu_name == "DoorECU"
     assert raw.can_rx == ["[DoorECU-BodyCan0]DoorCmd.TargetPosition"]
-    assert len(raw.can_tx) == 2
+    assert len(raw.can_tx) == 3
     assert len(raw.parameters) == 4
     assert len(raw.state) == 3
     assert len(raw.timers) == 1

@@ -100,8 +100,8 @@ def _lower_actions(
                 a = actions[i]
                 val = lower_expr(a.payload, signal_locals=signal_locals)
                 key = _remotive_signal_key(a.target_name)
-                # Values come from state fields cast to native types on set_state.
-                pairs.append(f'("{key}", {val})')
+                # _net(): restbus rejects np.float64 / np.bool_ from abs/min/compare.
+                pairs.append(f'("{key}", _net({val}))')
                 i += 1
             args = ",\n                ".join(pairs)
             if len(pairs) == 1:

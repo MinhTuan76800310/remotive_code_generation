@@ -23,8 +23,8 @@ def test_v2_resolve_3_rules(schema_v2_path):
     assert isinstance(model.rules[1].trigger, OnTimer)
     assert model.rules[1].trigger.timer_name == "tick"
     assert model.ecu_name == "DoorECU"
-    # publish_status: 1 set_state + 2 tx
-    assert [a.kind for a in model.rules[2].actions] == ["set_state", "tx", "tx"]
+    # publish_status: 1 set_state + 3 tx (pos, IsMoving, IsDone)
+    assert [a.kind for a in model.rules[2].actions] == ["set_state", "tx", "tx", "tx"]
 
 
 def test_bad_trigger_type(schema_v2_path):

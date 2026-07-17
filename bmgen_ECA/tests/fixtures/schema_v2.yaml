@@ -8,6 +8,8 @@ behavior:
     can_tx:
       - signal: "[DoorECU-BodyCan0]DoorStatus.CurrentPosition"
       - signal: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
+      # level: 1 when current≈target (not moving); 0 while stepping
+      - signal: "[DoorECU-BodyCan0]DoorStatus.IsDone"
     someip_tx: []
   parameters:
     - name: min_pos
@@ -57,7 +59,7 @@ behavior:
         - type: set_state
           target: current_pos
           payload: "$state.current_pos + max(0 - $para.move_step, min($para.move_step, $state.target_pos - $state.current_pos))"
-    # Publish state outward every tick (after move, so IsMoving is current)
+    # Publish state outward every tick (after move, so IsMoving/IsDone are current)
     - rule_id: publish_status
       trigger:
         type: on_timer
@@ -73,3 +75,7 @@ behavior:
         - type: tx
           target: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
           payload: "$state.door_moving"
+        # IsDone = arrived (level). Inverse of IsMoving; no pulse/edge needed.
+        - type: tx
+          target: "[DoorECU-BodyCan0]DoorStatus.IsDone"
+          payload: "abs($state.target_pos - $state.current_pos) <= $para.pos_tolerance"

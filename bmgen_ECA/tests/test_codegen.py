@@ -32,6 +32,8 @@ def test_codegen_syntax_and_shape(schema_v2_path, tmp_path):
     assert '["[DoorECU-BodyCan0]DoorCmd.TargetPosition"]' not in src
     assert '("DoorStatus.CurrentPosition"' in src
     assert '("DoorStatus.IsMoving"' in src
+    assert '("DoorStatus.IsDone"' in src
+    assert "_net(" in src
     assert "self.target_pos = float(" in src
     assert "self.current_pos = float(" in src
     assert "self.door_moving = bool(" in src

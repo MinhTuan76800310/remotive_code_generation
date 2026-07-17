@@ -9,6 +9,13 @@ from remotivelabs.topology.namespaces import filters
 from remotivelabs.topology.namespaces.can import CanNamespace, RestbusConfig
 
 
+def _net(v):
+    """Remotive restbus rejects numpy scalars; coerce to native Python."""
+    if isinstance(v, (bool, np.bool_)):
+        return bool(v)
+    return float(v)
+
+
 class {{ ecu_name }}:
     {{ ns_var }}: CanNamespace
 {% for p in params %}
