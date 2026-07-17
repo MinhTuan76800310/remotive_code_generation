@@ -1,30 +1,37 @@
-# CentralHPC — Passenger Welcome coordinator
-# On door open → fan-out seat adjust + ambient light → wait both done → end welcome.
-apiVersion: v1
-kind: ECU
+# CentralHPC — Passenger Welcome coordinator (schema_v2 / bmgen_ECA)
+# Detect door IsDone false→true edge → fan-out seat + ambient → join both branches → end.
+# Does NOT move actuators; only dispatches commands and tracks completion.
+#
+# BUS NOTE (single-NS shared-channel model):
+#   All peer signals live on one CanNamespace string [CentralHPC-BodyCan0].
+#   Remotive topology remaps channel wiring at compose time; YAML stays one-bus.
+#   End-welcome rules TX WelcomeStatus.WelcomeComplete so the sequence is observable.
+apiVersion: v1.0
 ecu_mock:
   name: CentralHPC
-
+behavior:
   interfaces:
     can_rx:
-      - signal: DoorStatus.DoorOpenDone
-      - signal: SeatStatus.SeatAdjustDone
-      - signal: LightStatus.AmbientLightDone
+      - signal: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      - signal: "[CentralHPC-BodyCan0]PW_SeatStatus.SeatPosition"
+      - signal: "[CentralHPC-BodyCan0]PW_SeatStatus.IsDone"
+      - signal: "[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight"
     can_tx:
-      - signal: SeatCommand.SeatAdjustRequest
-      - signal: LightCommand.AmbientLightRequest
-      - signal: WelcomeStatus.WelcomeComplete
+      - signal: "[CentralHPC-BodyCan0]PW_SeatCmd.SeatPosTarget"
+      - signal: "[CentralHPC-BodyCan0]PW_AmbientLightCmd.AmbientReq"
+      - signal: "[CentralHPC-BodyCan0]WelcomeStatus.WelcomeComplete"
     someip_tx: []
-
   parameters:
-    - name: welcome_seat_profile
+    - name: welcome_seat_pos
       type: int
-      value: 1
-    - name: welcome_light_scene
+      value: 5              # configurable seat target for Passenger Welcome
+    - name: welcome_ambient
       type: int
-      value: 2
-
+      value: 1              # configurable ambient request for Passenger Welcome
   state:
+    - name: prev_door_done
+      type: bool
+      init: false           # last observed DoorStatus.IsDone (edge memory)
     - name: welcome_active
       type: bool
       init: false
@@ -34,16 +41,41 @@ ecu_mock:
     - name: light_done
       type: bool
       init: false
-
-  timers: []
-
+    - name: last_seat_pos
+      type: int
+      init: 0               # latest known SeatPosition
+    - name: last_ambient
+      type: int
+      init: 0               # latest known AmbientLight
   rules:
-    # Door finished opening → start welcome: request seat + light in parallel
-    - rule_id: start_welcome_on_door_open
+    # --- continuous observers (always update latest known values) ---
+    - rule_id: track_seat_position
       trigger:
         type: on_rx
-        target: DoorStatus.DoorOpenDone
-      condition: "$DoorOpenDone == 1 AND $welcome_active == false"
+        target: "[CentralHPC-BodyCan0]PW_SeatStatus.SeatPosition"
+      condition: "true"
+      actions:
+        - type: set_state
+          target: last_seat_pos
+          payload: "$[CentralHPC-BodyCan0]PW_SeatStatus.SeatPosition"
+
+    - rule_id: track_ambient_light
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight"
+      condition: "true"
+      actions:
+        - type: set_state
+          target: last_ambient
+          payload: "$[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight"
+
+    # --- OpenDoorReceive: false→true edge, only when idle ---
+    # YAML order on DoorStatus.IsDone: start → already-done branches → end → latch prev
+    - rule_id: start_welcome_on_door_edge
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      condition: "$[CentralHPC-BodyCan0]DoorStatus.IsDone == true and $state.prev_door_done == false and $state.welcome_active == false"
       actions:
         - type: set_state
           target: welcome_active
@@ -55,58 +87,103 @@ ecu_mock:
           target: light_done
           payload: "false"
         - type: tx
-          target: SeatCommand.SeatAdjustRequest
-          payload: "$welcome_seat_profile"
+          target: "[CentralHPC-BodyCan0]PW_SeatCmd.SeatPosTarget"
+          payload: "$para.welcome_seat_pos"
         - type: tx
-          target: LightCommand.AmbientLightRequest
-          payload: "$welcome_light_scene"
+          target: "[CentralHPC-BodyCan0]PW_AmbientLightCmd.AmbientReq"
+          payload: "$para.welcome_ambient"
 
-    # Seat branch complete
+    # Seat already at target → complete seat branch immediately (SeatECU would not re-TX IsDone)
+    - rule_id: seat_already_at_target
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      condition: "$state.welcome_active == true and $state.seat_done == false and $state.last_seat_pos == $para.welcome_seat_pos"
+      actions:
+        - type: set_state
+          target: seat_done
+          payload: "true"
+
+    # Ambient already at target → complete light branch immediately (LightECU skips same-value TX)
+    - rule_id: light_already_at_target
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      condition: "$state.welcome_active == true and $state.light_done == false and $state.last_ambient == $para.welcome_ambient"
+      actions:
+        - type: set_state
+          target: light_done
+          payload: "true"
+
+    # Both already satisfied at start → EndWelcomeSequence immediately
+    - rule_id: end_welcome_after_door_start
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      condition: "$state.welcome_active == true and $state.seat_done == true and $state.light_done == true"
+      actions:
+        - type: set_state
+          target: welcome_active
+          payload: "false"
+        - type: tx
+          target: "[CentralHPC-BodyCan0]WelcomeStatus.WelcomeComplete"
+          payload: "1"
+
+    # Always latch previous door done (re-arm when IsDone returns to false)
+    - rule_id: latch_prev_door_done
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]DoorStatus.IsDone"
+      condition: "true"
+      actions:
+        - type: set_state
+          target: prev_door_done
+          payload: "$[CentralHPC-BodyCan0]DoorStatus.IsDone"
+
+    # --- seat branch: IsDone=true while active ---
     - rule_id: mark_seat_done
       trigger:
         type: on_rx
-        target: SeatStatus.SeatAdjustDone
-      condition: "$SeatAdjustDone == 1 AND $welcome_active == true"
+        target: "[CentralHPC-BodyCan0]PW_SeatStatus.IsDone"
+      condition: "$state.welcome_active == true and $state.seat_done == false and $[CentralHPC-BodyCan0]PW_SeatStatus.IsDone == true"
       actions:
         - type: set_state
           target: seat_done
           payload: "true"
 
-    # Light branch complete
+    - rule_id: end_welcome_after_seat
+      trigger:
+        type: on_rx
+        target: "[CentralHPC-BodyCan0]PW_SeatStatus.IsDone"
+      condition: "$state.welcome_active == true and $state.seat_done == true and $state.light_done == true"
+      actions:
+        - type: set_state
+          target: welcome_active
+          payload: "false"
+        - type: tx
+          target: "[CentralHPC-BodyCan0]WelcomeStatus.WelcomeComplete"
+          payload: "1"
+
+    # --- ambient branch: status equals requested target ---
     - rule_id: mark_light_done
       trigger:
         type: on_rx
-        target: LightStatus.AmbientLightDone
-      condition: "$AmbientLightDone == 1 AND $welcome_active == true"
+        target: "[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight"
+      condition: "$state.welcome_active == true and $state.light_done == false and $[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight == $para.welcome_ambient"
       actions:
         - type: set_state
           target: light_done
           payload: "true"
 
-    # Both branches done → end welcome sequence
-    # Fired when seat_done is set; re-checks light_done (and vice versa below).
-    - rule_id: finish_welcome_after_seat
+    - rule_id: end_welcome_after_light
       trigger:
         type: on_rx
-        target: SeatStatus.SeatAdjustDone
-      condition: "$welcome_active == true AND $seat_done == true AND $light_done == true"
+        target: "[CentralHPC-BodyCan0]PW_AmbientLight.AmbientLight"
+      condition: "$state.welcome_active == true and $state.seat_done == true and $state.light_done == true"
       actions:
         - type: set_state
           target: welcome_active
           payload: "false"
         - type: tx
-          target: WelcomeStatus.WelcomeComplete
-          payload: "1"
-
-    - rule_id: finish_welcome_after_light
-      trigger:
-        type: on_rx
-        target: LightStatus.AmbientLightDone
-      condition: "$welcome_active == true AND $seat_done == true AND $light_done == true"
-      actions:
-        - type: set_state
-          target: welcome_active
-          payload: "false"
-        - type: tx
-          target: WelcomeStatus.WelcomeComplete
+          target: "[CentralHPC-BodyCan0]WelcomeStatus.WelcomeComplete"
           payload: "1"

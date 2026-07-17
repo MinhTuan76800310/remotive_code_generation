@@ -1,75 +1,107 @@
-# SeatECU — Passenger Welcome
-# Receive seat-adjust request → apply driver-context position → report done.
-apiVersion: v1
-kind: ECU
+# SeatECU — seat position actuator + IsDone (schema_v2 / bmgen_ECA)
+# RX SeatPosTarget → latch target → 2s startup (20×0.1s) → step ±1 → TX SeatPosition
+# → on arrive: is_done=true, TX IsDone=true. Retarget restarts startup and clears done.
+apiVersion: v1.0
 ecu_mock:
   name: SeatECU
-
+behavior:
   interfaces:
     can_rx:
-      - signal: SeatCommand.SeatAdjustRequest
+      - signal: "[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
     can_tx:
-      - signal: SeatStatus.SeatAdjustDone
-      - signal: SeatStatus.SeatPosition
+      - signal: "[SeatECU-BodyCan0]PW_SeatStatus.SeatPosition"
+      - signal: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
     someip_tx: []
-
   parameters:
-    # Driver context: target track position for welcome profile (mm from rear stop)
-    - name: driver_seat_position_mm
+    - name: move_step
       type: int
-      value: 420
-    - name: adjust_duration_sec
-      type: float
-      value: 2.0
-
+      value: 1             # position units per tick after startup
+    - name: startup_ticks
+      type: int
+      value: 20            # 20 × 0.1s = 2s actuator startup delay
   state:
-    - name: adjusting
+    - name: seat_pos
+      type: int
+      init: 0
+    - name: seat_target
+      type: int
+      init: 0
+    - name: seat_moving
       type: bool
       init: false
-    - name: current_position_mm
+    - name: startup_ticks_left
       type: int
       init: 0
-    - name: target_profile
-      type: int
-      init: 0
-
-  # auto_start true: no start_timer in schema — free-running tick + $adjusting guard
+    - name: is_done
+      type: bool
+      init: false
   timers:
-    - name: adjust_motion
-      interval: 2.0
+    - name: move_tick
+      interval: 0.1
       auto_start: true
-
   rules:
-    # New adjust request while idle → latch target, start motion
-    - rule_id: start_adjust_on_request
+    # Accept new target when different from current pos AND from in-flight target.
+    # Retarget while moving also matches → restarts countdown, clears done.
+    - rule_id: accept_seat_target
       trigger:
         type: on_rx
-        target: SeatCommand.SeatAdjustRequest
-      condition: "$SeatAdjustRequest != 0 AND $adjusting == false"
+        target: "[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
+      condition: "$[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget != $state.seat_pos and $[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget != $state.seat_target"
       actions:
         - type: set_state
-          target: adjusting
+          target: seat_target
+          payload: "$[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
+        - type: set_state
+          target: seat_moving
           payload: "true"
         - type: set_state
-          target: target_profile
-          payload: "$SeatAdjustRequest"
-
-    # Motion timer complete → snap to driver context position, publish done
-    - rule_id: complete_adjust_on_timer
-      trigger:
-        type: on_timer
-        target: adjust_motion
-      condition: "$adjusting == true"
-      actions:
-        - type: set_state
-          target: current_position_mm
-          payload: "$driver_seat_position_mm"
-        - type: set_state
-          target: adjusting
+          target: is_done
           payload: "false"
         - type: tx
-          target: SeatStatus.SeatPosition
-          payload: "$driver_seat_position_mm"
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+          payload: "false"
+        - type: set_state
+          target: startup_ticks_left
+          payload: "$para.startup_ticks"
+
+    # Startup phase: count down 20 ticks (~2s) before actuator steps
+    - rule_id: startup_countdown
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left > 0"
+      actions:
+        - type: set_state
+          target: startup_ticks_left
+          payload: "$state.startup_ticks_left - 1"
+
+    # After startup: step ±move_step toward target, then publish position
+    - rule_id: step_seat_pos
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left == 0 and $state.seat_pos != $state.seat_target"
+      actions:
+        - type: set_state
+          target: seat_pos
+          payload: "$state.seat_pos + max(0 - $para.move_step, min($para.move_step, $state.seat_target - $state.seat_pos))"
         - type: tx
-          target: SeatStatus.SeatAdjustDone
-          payload: "1"
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.SeatPosition"
+          payload: "$state.seat_pos"
+
+    # Arrived: clear moving, raise is_done, TX IsDone=true
+    - rule_id: complete_seat_move
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left == 0 and $state.seat_pos == $state.seat_target"
+      actions:
+        - type: set_state
+          target: seat_moving
+          payload: "false"
+        - type: set_state
+          target: is_done
+          payload: "true"
+        - type: tx
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+          payload: "true"

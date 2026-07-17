@@ -1,78 +1,51 @@
-# LightControlECU — Passenger Welcome
-# Receive ambient-light request → apply welcome scene → report done.
-apiVersion: v1
-kind: ECU
+# LightControlECU — ambient light 1:1 mirror (schema_v2 / bmgen_ECA)
+# Boot: TX AmbientLight = 0. On AmbientReq != ambient → latch + TX (skip if same).
+apiVersion: v1.0
 ecu_mock:
   name: LightControlECU
-
+behavior:
   interfaces:
     can_rx:
-      - signal: LightCommand.AmbientLightRequest
+      - signal: "[LightControlECU-BodyCan0]PW_AmbientLightCmd.AmbientReq"
     can_tx:
-      - signal: LightStatus.AmbientLightDone
-      - signal: LightStatus.AmbientBrightness
-      - signal: LightStatus.AmbientScene
+      - signal: "[LightControlECU-BodyCan0]PW_AmbientLight.AmbientLight"
     someip_tx: []
-
-  parameters:
-    - name: welcome_brightness_pct
-      type: int
-      value: 40
-    - name: fade_in_sec
-      type: float
-      value: 0.5
-
   state:
-    - name: lighting
+    - name: ambient
+      type: int
+      init: 0
+    - name: boot_done
       type: bool
       init: false
-    - name: active_scene
-      type: int
-      init: 0
-    - name: brightness_pct
-      type: int
-      init: 0
-
-  # auto_start true: no start_timer in schema — free-running tick + $lighting guard
   timers:
-    - name: fade_in
-      interval: 0.5
+    # Free-running boot tick — only boot_publish consumes it (one-shot via boot_done)
+    - name: boot_tick
+      interval: 0.1
       auto_start: true
-
   rules:
-    # Welcome (or any non-zero) scene request while idle → start fade-in
-    - rule_id: start_ambient_on_request
-      trigger:
-        type: on_rx
-        target: LightCommand.AmbientLightRequest
-      condition: "$AmbientLightRequest != 0 AND $lighting == false"
-      actions:
-        - type: set_state
-          target: lighting
-          payload: "true"
-        - type: set_state
-          target: active_scene
-          payload: "$AmbientLightRequest"
-
-    # Fade complete → apply welcome brightness + scene, report done
-    - rule_id: complete_ambient_on_timer
+    - rule_id: boot_publish
       trigger:
         type: on_timer
-        target: fade_in
-      condition: "$lighting == true"
+        target: boot_tick
+      condition: "$state.boot_done == false"
+      actions:
+        - type: tx
+          target: "[LightControlECU-BodyCan0]PW_AmbientLight.AmbientLight"
+          payload: "$state.ambient"
+        - type: set_state
+          target: boot_done
+          payload: "true"
+
+    # 1:1 mirror — skip when req equals current ambient
+    - rule_id: apply_ambient_req
+      trigger:
+        type: on_rx
+        target: "[LightControlECU-BodyCan0]PW_AmbientLightCmd.AmbientReq"
+      condition: "$[LightControlECU-BodyCan0]PW_AmbientLightCmd.AmbientReq != $state.ambient"
       actions:
         - type: set_state
-          target: brightness_pct
-          payload: "$welcome_brightness_pct"
-        - type: set_state
-          target: lighting
-          payload: "false"
+          target: ambient
+          payload: "$[LightControlECU-BodyCan0]PW_AmbientLightCmd.AmbientReq"
         - type: tx
-          target: LightStatus.AmbientScene
-          payload: "$active_scene"
-        - type: tx
-          target: LightStatus.AmbientBrightness
-          payload: "$welcome_brightness_pct"
-        - type: tx
-          target: LightStatus.AmbientLightDone
-          payload: "1"
+          target: "[LightControlECU-BodyCan0]PW_AmbientLight.AmbientLight"
+          payload: "$state.ambient"
