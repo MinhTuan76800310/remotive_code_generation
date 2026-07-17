@@ -19,23 +19,22 @@ flowchart LR
   Light["LightControlECU"]
   Bus["Bus / observers"]
 
-  Tester -->|"DoorCommand.DoorOpenRequest"| Door
-  Door -->|"DoorStatus.DoorOpenDone"| HPC
-  HPC -->|"SeatCommand.SeatAdjustRequest"| Seat
-  Seat -->|"SeatStatus.SeatAdjustDone"| HPC
-  Seat -.->|"SeatStatus.SeatPosition"| Bus
-  HPC -->|"LightCommand.AmbientLightRequest"| Light
-  Light -->|"LightStatus.AmbientLightDone"| HPC
-  Light -.->|"AmbientScene / AmbientBrightness"| Bus
+  Tester -->|"DoorCmd.TargetPosition"| Door
+  Door -->|"DoorStatus.IsDone"| HPC
+  HPC -->|"PW_SeatCmd.SeatPosTarget"| Seat
+  Seat -->|"PW_SeatStatus.IsDone"| HPC
+  Seat -.->|"PW_SeatStatus.SeatPosition"| Bus
+  HPC -->|"PW_AmbientLightCmd.AmbientReq"| Light
+  Light -->|"PW_AmbientLight.AmbientLight"| HPC
   HPC -->|"WelcomeStatus.WelcomeComplete"| Bus
 ```
 
 | ECU | Role |
 |-----|------|
-| **DoorECU** | Receive door-open request → run open sequence → report done to CentralHPC |
-| **CentralHPC** | On door open → fan-out seat adjust + ambient light → wait both done → end welcome |
-| **SeatECU** | Receive seat adjust request → apply driver-context position → report done |
-| **LightControlECU** | Receive ambient light request → apply welcome config → report done |
+| **DoorECU** | RX target position → step motion → TX CurrentPosition / IsMoving / IsDone |
+| **CentralHPC** | On Door IsDone false→true → fan-out seat + ambient → join both → TX WelcomeComplete |
+| **SeatECU** | RX SeatPosTarget → startup + step → TX SeatPosition / IsDone |
+| **LightControlECU** | RX AmbientReq → 1:1 mirror TX AmbientLight |
 
 ## Layout
 
@@ -62,21 +61,19 @@ See repo root [`docs/schema_Nhan.yaml`](../../docs/schema_Nhan.yaml) and behavio
 Signal names use `Frame.Signal` so a future Remotive binding can map FrameFilter cleanly.
 Cross-ECU coordination is **signal-level only** (no topology file in this workspace yet).
 
-## Signal map
+## Signal map (live schema_v2 / Remotive)
 
 | From → To | Signal | Meaning |
 |-----------|--------|---------|
-| (tester/HMI) → DoorECU | `DoorCommand.DoorOpenRequest` | request open (~1.5s if closed; ack ngay if open) |
-| (tester/HMI) → DoorECU | `DoorCommand.DoorCloseRequest` | request close (~1.5s if open; ack ngay if closed) |
-| DoorECU → CentralHPC | `DoorStatus.DoorOpenDone` | door open complete |
-| DoorECU → bus | `DoorStatus.DoorCloseDone` | door close complete |
-| CentralHPC → SeatECU | `SeatCommand.SeatAdjustRequest` | profile id |
-| SeatECU → CentralHPC | `SeatStatus.SeatAdjustDone` | seat done |
-| SeatECU → bus | `SeatStatus.SeatPosition` | position mm |
-| CentralHPC → LightControlECU | `LightCommand.AmbientLightRequest` | scene id |
-| LightControlECU → CentralHPC | `LightStatus.AmbientLightDone` | light done |
-| LightControlECU → bus | `LightStatus.AmbientBrightness` / `AmbientScene` | applied config |
-| CentralHPC → bus | `WelcomeStatus.WelcomeComplete` | sequence end |
+| Tester → DoorECU | `DoorCmd.TargetPosition` | commanded door position 0..100 |
+| DoorECU → CentralHPC / bus | `DoorStatus.CurrentPosition` / `IsMoving` / `IsDone` | level motion status (`IsDone` = arrived) |
+| CentralHPC → SeatECU | `PW_SeatCmd.SeatPosTarget` | welcome seat target (param `5`) |
+| SeatECU → CentralHPC / bus | `PW_SeatStatus.SeatPosition` / `IsDone` | seat motion + done |
+| CentralHPC → LightControlECU | `PW_AmbientLightCmd.AmbientReq` | welcome ambient (param `1`) |
+| LightControlECU → CentralHPC / bus | `PW_AmbientLight.AmbientLight` | mirrored ambient value |
+| CentralHPC → bus | `WelcomeStatus.WelcomeComplete` | join complete (level `1`; sticky MVP) |
+
+Abstract SPECS dialect (`DoorOpenRequest` / fade timers) lives only in [`examples/SPECS.md`](./examples/SPECS.md) — **not** what `examples/*.yaml` or live E2E use.
 
 ## Schema gap used as pattern
 
