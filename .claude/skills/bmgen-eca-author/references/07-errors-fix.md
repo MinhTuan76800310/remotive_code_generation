@@ -38,3 +38,19 @@ When parse fails: for each `E_*` line, apply the fix below, then re-run parse.
 parse → E_*? → fix using this table + 03-field-graph → parse again
 until zero errors
 ```
+
+## "Parse green but still wrong" — non-dialect bugs
+
+These are NOT in `ERROR_CATALOG`. If `bmgen-eca parse` exits 0 but live tests
+miss the expected signal, the bug is in rule order, not the dialect:
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `IsDone` sticky (level, never pulses) | `IsDone` derived from `arrived == true` instead of pulse budget | Use `done_pulse_left` counter; see [`08-pulse-done.md`](08-pulse-done.md) |
+| Pulse decays in same tick it TX'd | `decay` rule before `publish_status` in YAML order | Move decay AFTER publish |
+| Pulse never arms (arrived but `IsDone=0`) | `was_moving` never latched; or latched BEFORE `update_moving` ran | `latch_was_moving` must be the LAST on_timer rule |
+| Pulse width too short for tests | `done_pulse_ticks × interval < 4 × DBC GenMsgCycleTime` | Increase `done_pulse_ticks` |
+| Retarget mid-pulse leaves `IsDone=1` | Accept rule did not clear `done_active`/`done_pulse_left` and TX `IsDone=false` | Add those 3 actions in accept rule |
+
+Reminder: the compiler validates *structure*, not *timing*. Rule order is your
+contract.

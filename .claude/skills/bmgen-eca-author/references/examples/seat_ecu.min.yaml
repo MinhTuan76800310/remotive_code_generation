@@ -1,0 +1,149 @@
+# SeatECU — seat position actuator + IsDone pulse (schema_v2 / bmgen_ECA)
+#
+# Motion: RX SeatPosTarget → latch target → 2s startup (20×0.1s) → step ±1 → TX SeatPosition.
+# Done contract:
+#   - On arrive, arm done_active + done_pulse_left.
+#   - Seat tick = 0.1s; done_pulse_ticks=2 → ~0.2s high = 4 × DBC GenMsgCycleTime 50ms.
+#   - After budget exhausted, one TX IsDone=false (restbus is sticky without periodic TX).
+#   - Retarget clears pulse and TX IsDone=false immediately.
+apiVersion: v1.0
+ecu_mock:
+  name: SeatECU
+behavior:
+  interfaces:
+    can_rx:
+      - signal: "[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
+    can_tx:
+      - signal: "[SeatECU-BodyCan0]PW_SeatStatus.SeatPosition"
+      - signal: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+    someip_tx: []
+  parameters:
+    - name: move_step
+      type: int
+      value: 1             # position units per tick after startup
+    - name: startup_ticks
+      type: int
+      value: 20            # 20 × 0.1s = 2s actuator startup delay
+    # 2 × tick(0.1s) = 0.2s = 4 × restbus cycle(50ms)
+    - name: done_pulse_ticks
+      type: int
+      value: 2
+  state:
+    - name: seat_pos
+      type: int
+      init: 0
+    - name: seat_target
+      type: int
+      init: 0
+    - name: seat_moving
+      type: bool
+      init: false
+    - name: startup_ticks_left
+      type: int
+      init: 0
+    - name: done_active
+      type: bool
+      init: false          # pulse FSM armed until final TX false
+    - name: done_pulse_left
+      type: int
+      init: 0
+  timers:
+    - name: move_tick
+      interval: 0.1
+      auto_start: true
+  rules:
+    # Accept new target when different from current pos AND from in-flight target.
+    - rule_id: accept_seat_target
+      trigger:
+        type: on_rx
+        target: "[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
+      condition: "$[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget != $state.seat_pos and $[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget != $state.seat_target"
+      actions:
+        - type: set_state
+          target: seat_target
+          payload: "$[SeatECU-BodyCan0]PW_SeatCmd.SeatPosTarget"
+        - type: set_state
+          target: seat_moving
+          payload: "true"
+        - type: set_state
+          target: done_active
+          payload: "false"
+        - type: set_state
+          target: done_pulse_left
+          payload: "0"
+        - type: tx
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+          payload: "false"
+        - type: set_state
+          target: startup_ticks_left
+          payload: "$para.startup_ticks"
+
+    - rule_id: startup_countdown
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left > 0"
+      actions:
+        - type: set_state
+          target: startup_ticks_left
+          payload: "$state.startup_ticks_left - 1"
+
+    - rule_id: step_seat_pos
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left == 0 and $state.seat_pos != $state.seat_target"
+      actions:
+        - type: set_state
+          target: seat_pos
+          payload: "$state.seat_pos + max(0 - $para.move_step, min($para.move_step, $state.seat_target - $state.seat_pos))"
+        - type: tx
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.SeatPosition"
+          payload: "$state.seat_pos"
+
+    # Arrived: clear moving, arm pulse budget (service rule runs later same tick)
+    - rule_id: complete_seat_move
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.seat_moving == true and $state.startup_ticks_left == 0 and $state.seat_pos == $state.seat_target"
+      actions:
+        - type: set_state
+          target: seat_moving
+          payload: "false"
+        - type: set_state
+          target: done_active
+          payload: "true"
+        - type: set_state
+          target: done_pulse_left
+          payload: "$para.done_pulse_ticks"
+
+    # Pulse service (must be after complete_seat_move in YAML order):
+    #   left==0 → TX false and disarm (one-shot end)
+    #   left>0 → TX true and consume.
+    # End runs first: when high decrements 1→0, clear waits until next tick.
+    - rule_id: service_done_pulse_end
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.done_active == true and $state.done_pulse_left == 0"
+      actions:
+        - type: tx
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+          payload: "false"
+        - type: set_state
+          target: done_active
+          payload: "false"
+
+    - rule_id: service_done_pulse_high
+      trigger:
+        type: on_timer
+        target: move_tick
+      condition: "$state.done_active == true and $state.done_pulse_left > 0"
+      actions:
+        - type: tx
+          target: "[SeatECU-BodyCan0]PW_SeatStatus.IsDone"
+          payload: "true"
+        - type: set_state
+          target: done_pulse_left
+          payload: "$state.done_pulse_left - 1"

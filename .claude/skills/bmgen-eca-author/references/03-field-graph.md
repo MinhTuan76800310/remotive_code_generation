@@ -64,3 +64,50 @@ flowchart TB
 ## MVP signal read rule
 
 `$[Bus]Frame.Signal` in expr resolves to **can_rx only**. You cannot read a TX-only signal via `$[…]` unless it is also declared in `can_rx`.
+
+---
+
+## Sub-graph: edge memory (1→0 detect)
+
+Use when a TX signal must fire on a level *transition* (e.g. `IsMoving` 1→0). No
+dialect primitive — implement with two state vars: a current level and a latched
+prev-tick level.
+
+```mermaid
+flowchart LR
+  P["$para.* / $state.target"] --> UPDATE["update_moving<br/>on_timer, condition true"]
+  UPDATE --> MOV["door_moving: bool"]
+  MOV -->|this tick| LATCH["latch_was_moving<br/>on_timer, condition true<br/>(MUST run last)"]
+  LATCH -->|next tick| WAS["was_moving: bool"]
+  MOV -->|edge check| ARM["arm_done_pulse<br/>condition: was_moving && !moving && pulse==0"]
+  WAS -->|edge check| ARM
+  ARM --> PULSE["done_pulse_left: int"]
+  PULSE -->|publish before decay| TXD["tx IsDone<br/>= done_pulse_left > 0"]
+  PULSE --> DECAY["decay_done_pulse"]
+```
+
+Order matters: `update_moving` writes `door_moving`, `latch_was_moving` reads it
+and stores for next tick, `arm_done_pulse` compares prev vs new level.
+
+---
+
+## Sub-graph: pulse budget FSM (one-tick or multi-tick)
+
+Use when the high window of `IsDone` must be short (~restbus cycles), not sticky.
+
+```mermaid
+flowchart TB
+  ARM[arm_done_pulse<br/>set done_pulse_left = done_pulse_ticks] --> PULSE
+  PULSE["done_pulse_left: int"] -->|condition: left > 0| PUB["publish_status<br/>tx IsDone = left > 0"]
+  PULSE -->|same rule or next| DECAY["decay_done_pulse<br/>left = left - 1"]
+  PUB -.->|after publish| DECAY
+  DECAY -->|when left hits 0| END["service_done_pulse_end<br/>tx IsDone = false, disarm done_active"]
+```
+
+`done_pulse_ticks × timer_interval` must be ≥ 4 × DBC `GenMsgCycleTime` of the
+receiver's frame, else the pulse disappears between restbus cycles.
+
+Retarget during pulse: in the accept rule, also set `done_active=false`,
+`done_pulse_left=0`, and TX `IsDone=false` to clear the high window.
+
+See [`08-pulse-done.md`](08-pulse-done.md) for full YAML recipes.

@@ -1,3 +1,10 @@
+# DoorECU — position actuator + IsDone pulse (schema_v2 / bmgen_ECA)
+#
+# Done contract (live Remotive):
+#   - IsMoving is continuous level while |target-current| > tol.
+#   - On IsMoving 1→0 (arrived), arm a one-timer-cycle pulse.
+#   - Door tick = 0.2s = 4 × DBC GenMsgCycleTime 50ms → IsDone=1 for that window, then 0.
+#   - CentralHPC still detects false→true edge on the pulse.
 apiVersion: v1.0
 ecu_mock:
   name: DoorECU
@@ -8,6 +15,7 @@ behavior:
     can_tx:
       - signal: "[DoorECU-BodyCan0]DoorStatus.CurrentPosition"
       - signal: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
+      - signal: "[DoorECU-BodyCan0]DoorStatus.IsDone"
     someip_tx: []
   parameters:
     - name: min_pos
@@ -22,22 +30,32 @@ behavior:
     - name: pos_tolerance
       type: float
       value: 0.01          # "arrived" threshold; avoids exact float equality
+    # 1 × tick(0.2s) = 4 × restbus cycle(50ms)
+    - name: done_pulse_ticks
+      type: int
+      value: 1
   state:
     - name: door_moving
       type: bool
       init: false
+    - name: was_moving
+      type: bool
+      init: false          # previous-tick moving (edge memory for 1→0)
     - name: current_pos
       type: float
       init: 0.0
     - name: target_pos
       type: float
       init: 0.0
+    - name: done_pulse_left
+      type: int
+      init: 0              # ticks remaining with IsDone=1
   timers:
     - name: tick
       interval: 0.2
       auto_start: true
   rules:
-    # Receive commanded target, clamp into [min_pos, max_pos] -- the range guard
+    # Receive commanded target, clamp into [min_pos, max_pos]
     - rule_id: receive_target
       trigger:
         type: on_rx
@@ -47,6 +65,7 @@ behavior:
         - type: set_state
           target: target_pos
           payload: "max($para.min_pos, min($para.max_pos, $[DoorECU-BodyCan0]DoorCmd.TargetPosition))"
+
     # Step current_pos toward target_pos; clamp prevents overshoot
     - rule_id: move_door
       trigger:
@@ -57,8 +76,9 @@ behavior:
         - type: set_state
           target: current_pos
           payload: "$state.current_pos + max(0 - $para.move_step, min($para.move_step, $state.target_pos - $state.current_pos))"
-    # Publish state outward every tick (after move, so IsMoving is current)
-    - rule_id: publish_status
+
+    # Refresh continuous IsMoving level after step
+    - rule_id: update_moving
       trigger:
         type: on_timer
         target: tick
@@ -67,9 +87,53 @@ behavior:
         - type: set_state
           target: door_moving
           payload: "abs($state.target_pos - $state.current_pos) > $para.pos_tolerance"
+
+    # IsMoving 1→0 → arm pulse (only when not already pulsing)
+    - rule_id: arm_done_pulse
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "$state.was_moving == true and $state.door_moving == false and $state.done_pulse_left == 0"
+      actions:
+        - type: set_state
+          target: done_pulse_left
+          payload: "$para.done_pulse_ticks"
+
+    # Publish every tick; IsDone high only while pulse budget remains
+    - rule_id: publish_status
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "true"
+      actions:
         - type: tx
           target: "[DoorECU-BodyCan0]DoorStatus.CurrentPosition"
           payload: "$state.current_pos"
         - type: tx
           target: "[DoorECU-BodyCan0]DoorStatus.IsMoving"
+          payload: "$state.door_moving"
+        - type: tx
+          target: "[DoorECU-BodyCan0]DoorStatus.IsDone"
+          payload: "$state.done_pulse_left > 0"
+
+    # Consume one pulse tick after TX so this cycle still shows IsDone=1
+    - rule_id: decay_done_pulse
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "$state.done_pulse_left > 0"
+      actions:
+        - type: set_state
+          target: done_pulse_left
+          payload: "$state.done_pulse_left - 1"
+
+    # Latch moving for next-tick edge detect (must run last)
+    - rule_id: latch_was_moving
+      trigger:
+        type: on_timer
+        target: tick
+      condition: "true"
+      actions:
+        - type: set_state
+          target: was_moving
           payload: "$state.door_moving"

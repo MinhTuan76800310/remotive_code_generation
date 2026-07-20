@@ -130,3 +130,21 @@ rules:
 **Order matters:** multiple rules on same frame/timer fire in **YAML source order**.
 
 **Errors:** `E_BAD_TRIGGER_TYPE`, `E_TRIGGER_TARGET`, `E_BAD_ACTION`, `E_TX_TARGET_NOT_IN_CAN_TX`, `E_SET_STATE_UNKNOWN`, `E_BAD_EXPR`, `E_BARE_IDENT`, `E_UNRESOLVED_IDENT`, `E_UNKNOWN_FUNCTION`, `E_DUP_SYMBOL`
+
+---
+
+## On same timer: service order
+
+When several `on_timer` rules share one timer, they fire one by one inside a
+single ticker loop, in YAML source order. Use this to compose state machines
+across one tick:
+
+- **read-then-write** — rule N reads a state, rule N+1 writes it (typical `step` → `update_level`).
+- **publish-then-decay** — TX while a counter is high, then decrement next rule.
+- **arm-then-publish** — arm a pulse budget, then publish reads the new value this cycle.
+
+Rule order is the *contract* for what happens within a single tick. Conditions
+enforce when a rule fires, but YAML order determines **the sequence inside one
+loop body**. See [`08-pulse-done.md`](08-pulse-done.md) for a worked example.
+
+Anti-pattern: relying on condition alone to enforce order between two rules.
